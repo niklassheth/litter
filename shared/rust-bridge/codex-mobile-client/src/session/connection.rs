@@ -37,6 +37,7 @@ pub(crate) struct SshReconnectTransport {
     pub(crate) ssh_client: Arc<SshClient>,
     pub(crate) local_port: u16,
     pub(crate) remote_port: Arc<StdMutex<u16>>,
+    pub(crate) app_server_control_socket_path: Option<String>,
     pub(crate) prefer_ipv6: bool,
     pub(crate) working_dir: Option<String>,
     pub(crate) ssh_pid: Option<Arc<StdMutex<Option<u32>>>>,
@@ -1365,6 +1366,102 @@ impl RemoteTransport for SshReconnectTransport {
         args: &RemoteAppServerConnectArgs,
         websocket_url: &str,
     ) -> Result<Reconnected, TransportError> {
+        if let Some(socket_path) = self.app_server_control_socket_path.as_deref() {
+            if let Err(error) = self
+                .ssh_client
+                .ensure_forward_streamlocal_to(self.local_port, socket_path)
+                .await
+            {
+                warn!(
+                    "remote reconnect streamlocal restore failed: {} local_port={} socket={} error={}",
+                    websocket_url, self.local_port, socket_path, error
+                );
+            }
+
+            match connect_remote_client(args).await {
+                Ok(client) => {
+                    return Ok(Reconnected {
+                        client,
+                        keepalive: None,
+                    });
+                }
+                Err(error) => {
+                    warn!(
+                        "remote reconnect via app-server control socket failed: {} socket={} error={}",
+                        websocket_url, socket_path, error
+                    );
+                    let _ = self.ssh_client.abort_forward_port(self.local_port).await;
+
+                    match self
+                        .ssh_client
+                        .remote_app_server_control_socket_if_present()
+                        .await
+                    {
+                        Ok(Some(refreshed_socket_path)) => {
+                            if let Err(forward_error) = self
+                                .ssh_client
+                                .ensure_forward_streamlocal_to(
+                                    self.local_port,
+                                    &refreshed_socket_path,
+                                )
+                                .await
+                            {
+                                warn!(
+                                    "remote reconnect refreshed streamlocal restore failed: {} local_port={} socket={} error={}",
+                                    websocket_url, self.local_port, refreshed_socket_path, forward_error
+                                );
+                            } else if let Ok(client) = connect_remote_client(args).await {
+                                info!(
+                                    "remote reconnect succeeded via refreshed app-server control socket: {}",
+                                    websocket_url
+                                );
+                                return Ok(Reconnected {
+                                    client,
+                                    keepalive: None,
+                                });
+                            }
+                        }
+                        Ok(None) => {
+                            warn!(
+                                "remote reconnect app-server control socket missing; falling back to SSH bootstrap: {}",
+                                websocket_url
+                            );
+                        }
+                        Err(probe_error) => {
+                            warn!(
+                                "remote reconnect app-server control socket probe failed; falling back to SSH bootstrap: {} error={}",
+                                websocket_url, probe_error
+                            );
+                        }
+                    }
+
+                    if rebootstrap_remote_client_over_ssh(self, websocket_url).await {
+                        match connect_remote_client(args).await {
+                            Ok(client) => {
+                                info!(
+                                    "remote reconnect succeeded after ssh rebootstrap: {}",
+                                    websocket_url
+                                );
+                                return Ok(Reconnected {
+                                    client,
+                                    keepalive: None,
+                                });
+                            }
+                            Err(retry_error) => {
+                                warn!(
+                                    "remote reconnect after ssh rebootstrap still failed: {} - {}",
+                                    websocket_url, retry_error
+                                );
+                                return Err(retry_error);
+                            }
+                        }
+                    }
+
+                    return Err(error);
+                }
+            }
+        }
+
         let remote_host = ssh_reconnect_remote_host(self);
         let remote_port = ssh_reconnect_remote_port(self);
         if let Err(error) = self

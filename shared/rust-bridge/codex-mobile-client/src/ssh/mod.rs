@@ -57,14 +57,10 @@ use codex_release::fetch_latest_stable_codex_release;
 use connect::ClientHandler;
 use parsers::{parse_install_status_and_path, parse_kv_lines};
 
-pub(crate) use crate::shell_quoting::{
-    cmd_quote, posix_quote as shell_quote, powershell_quote as ps_quote,
-};
+pub(crate) use crate::shell_quoting::posix_quote as shell_quote;
 pub(crate) use crate::ssh_scripts::posix::{PACKAGE_MANAGER_PROBE, PROFILE_INIT};
 pub(crate) use exec::build_posix_exec_command;
-pub(crate) use types::{
-    CodexInstallOutcome, RemotePlatform, RemoteShell, ResolvedCodexRelease, exit_status_from_code,
-};
+pub(crate) use types::{CodexInstallOutcome, RemotePlatform, RemoteShell, ResolvedCodexRelease};
 pub use types::{
     ExecResult, SshAuth, SshBootstrapResult, SshCredentials, SshError, SshExecChild, SshExecStderr,
     SshExecStdin, SshExecStdout,
@@ -113,6 +109,12 @@ pub(super) struct ForwardTask {
     pub(super) remote_host: String,
     pub(super) remote_port: u16,
     pub(super) task: tokio::task::JoinHandle<()>,
+}
+
+impl ForwardTask {
+    pub(super) fn streamlocal_remote_host(socket_path: &str) -> String {
+        format!("unix:{socket_path}")
+    }
 }
 
 // Logging helpers — every event goes through `log_rust` so the bridge log

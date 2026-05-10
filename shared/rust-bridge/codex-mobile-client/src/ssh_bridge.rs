@@ -366,6 +366,7 @@ async fn connect_codex_via_ssh(
         ssh_client: Arc::clone(&ssh),
         local_port: bootstrap.tunnel_local_port,
         remote_port: Arc::new(StdMutex::new(bootstrap.server_port)),
+        app_server_control_socket_path: None,
         prefer_ipv6,
         working_dir: None,
         ssh_pid: Some(ssh_pid),

@@ -410,7 +410,7 @@ impl SshClient {
         })
     }
 
-    pub(super) async fn wait_for_forwarded_websocket_ready(
+    pub(crate) async fn wait_for_forwarded_websocket_ready(
         &self,
         local_port: u16,
         pid: Option<u32>,
@@ -424,7 +424,6 @@ impl SshClient {
         for attempt in 0..TUNNEL_HEALTH_ATTEMPTS {
             match tokio_tungstenite::connect_async(&websocket_url).await {
                 Ok((mut websocket, _)) => {
-                    use futures::SinkExt;
                     let _ = websocket.close(None).await;
                     append_bridge_info_log(&format!(
                         "ssh_bootstrap_probe_success url={} attempt={}",
