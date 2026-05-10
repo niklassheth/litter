@@ -63,7 +63,6 @@
 		19B4F5707625A7336C99DC88 /* CrossServerTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F39212507F7334160D127E8 /* CrossServerTools.swift */; };
 		1AF5B0CFD0F28F0A7E787A04 /* MessageRenderCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47D3FB91329C177A51F198B3 /* MessageRenderCache.swift */; };
 		1B6CB8BC9F613C565C3F66A7 /* kitty-litter-light.json in Resources */ = {isa = PBXBuildFile; fileRef = 1F375FD1856F2663DBEA699F /* kitty-litter-light.json */; };
-		1BFD0FD1F466901FB05DACBD /* LitterLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 2DF6931F753DFD2AB67F62DC /* LitterLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		1C111A40B60EEFA10E9171A8 /* UltrasonicEmitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 661D06D9BB4571F38A7AD272 /* UltrasonicEmitter.swift */; };
 		1C1BCBE95443A2553A6C08F3 /* WatchProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CC0D1475C008F69A2503AA4 /* WatchProjectionTests.swift */; };
 		1C6E7D681E15F41538C7D0DF /* catppuccin-mocha-Ry8aD-5u.json in Resources */ = {isa = PBXBuildFile; fileRef = D4BBEE5D22A050571A528EF0 /* catppuccin-mocha-Ry8aD-5u.json */; };
@@ -140,7 +139,6 @@
 		3AEBEBB2C0A6483A4E7D62F0 /* RustVoiceHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8872A0620A38EB5307BC098C /* RustVoiceHandoff.swift */; };
 		3B231AE724CB8BEE3E7DE445 /* NetworkDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2C54AE62D2865D1C7750F7A /* NetworkDiscovery.swift */; };
 		3B4440BAE046EE8D0D2653E2 /* material-theme-palenight.json in Resources */ = {isa = PBXBuildFile; fileRef = B776A14B7CB1BD40651E0EE1 /* material-theme-palenight.json */; };
-		3BEE4213B5E4E91944903E8C /* CodexTurnLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D15D6BDA456B49C319AB4F8 /* CodexTurnLiveActivity.swift */; };
 		3C38788DE0DEFF9DDCE9FB95 /* TipJarStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8A5A95314CD68B7C7276BFD /* TipJarStore.swift */; };
 		3D14179A9B467B535DBFB70E /* AppServerHealth+UI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71FEC9FF70E821482C5960FD /* AppServerHealth+UI.swift */; };
 		3D79967494F9235E83B7ABBA /* kanagawa-dragon-VscOyZL-.json in Resources */ = {isa = PBXBuildFile; fileRef = C4ED85CEB24FF82E4E2C4E36 /* kanagawa-dragon-VscOyZL-.json */; };
@@ -613,27 +611,9 @@
 			remoteGlobalIDString = A3D84F588EDBC1EA550D6691;
 			remoteInfo = Litter;
 		};
-		A54A02928202807C2DE3ADF3 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = B5F70FFC94D335C17162EB35 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 4D58398238C075D3A3A3AB9B;
-			remoteInfo = LitterLiveActivity;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		D711EC2924CE758418892776 /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				1BFD0FD1F466901FB05DACBD /* LitterLiveActivity.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		EF17D42583C9250F5BEC3A0B /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1614,12 +1594,10 @@
 				8315BF041A8C2CD422EAFC74 /* Sources */,
 				5367EEFD6422750AE9FEF343 /* Resources */,
 				AA7F329456F40E8DD44D56A9 /* Frameworks */,
-				D711EC2924CE758418892776 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				D9747756413DC5D5FD6BDE37 /* PBXTargetDependency */,
 			);
 			name = Litter;
 			packageProductDependencies = (
@@ -1674,29 +1652,14 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
-					3B991C03E72B1546CAD35698 = {
-						DevelopmentTeam = UH66Q8ZAYG;
-					};
-					4D58398238C075D3A3A3AB9B = {
-						DevelopmentTeam = UH66Q8ZAYG;
-					};
 					6EBBC661C017816B2D4245DF = {
-						DevelopmentTeam = UH66Q8ZAYG;
 						ProvisioningStyle = "$(APP_CODE_SIGN_STYLE)";
 					};
 					7BB0106D190F10717D781234 = {
-						DevelopmentTeam = UH66Q8ZAYG;
 						TestTargetID = A3D84F588EDBC1EA550D6691;
 					};
 					A3D84F588EDBC1EA550D6691 = {
-						DevelopmentTeam = UH66Q8ZAYG;
 						SystemCapabilities = "[\"com.apple.BackgroundModes\": [\"enabled\": true]]";
-					};
-					C0C98C6012493B73CDD5AD6E = {
-						DevelopmentTeam = UH66Q8ZAYG;
-					};
-					DA07A1EAC6173D09F6FB99D9 = {
-						DevelopmentTeam = UH66Q8ZAYG;
 					};
 				};
 			};
@@ -2063,7 +2026,6 @@
 				C6976583FC909AA0B55DFCA8 /* CloudKVSBridge.swift in Sources */,
 				8445E0A9CDF58E2E9A509018 /* CodeBlockView.swift in Sources */,
 				79979BB2F64E9429CB78709D /* CodexTurnAttributes.swift in Sources */,
-				3BEE4213B5E4E91944903E8C /* CodexTurnLiveActivity.swift in Sources */,
 				5784473E9D446D638DE2EEB2 /* CodexVoiceCallAttributes.swift in Sources */,
 				20949942F84F8EFDAADF2F75 /* ComputerUseToolCallView.swift in Sources */,
 				CDE88674C0C5A1B4C801267E /* ConnectionTarget.swift in Sources */,
@@ -2393,11 +2355,6 @@
 			target = A3D84F588EDBC1EA550D6691 /* Litter */;
 			targetProxy = 240B55BFB7B1C29A6E7CF566 /* PBXContainerItemProxy */;
 		};
-		D9747756413DC5D5FD6BDE37 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 4D58398238C075D3A3A3AB9B /* LitterLiveActivity */;
-			targetProxy = A54A02928202807C2DE3ADF3 /* PBXContainerItemProxy */;
-		};
 		DCDC186E05C2B3144339E5BC /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = A3D84F588EDBC1EA550D6691 /* Litter */;
@@ -2441,14 +2398,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Sources/LitterWatch/LitterWatch.entitlements;
 				CODE_SIGN_IDENTITY = "$(WATCH_CODE_SIGN_IDENTITY)";
 				CODE_SIGN_STYLE = "$(WATCH_CODE_SIGN_STYLE)";
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = "$(inherited)";
 				INFOPLIST_FILE = Sources/LitterWatch/Info.plist;
 				OTHER_LDFLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.watchkitapp;
 				PROVISIONING_PROFILE_SPECIFIER = "$(WATCH_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -2469,18 +2425,17 @@
 				APP_CODE_SIGN_STYLE = Automatic;
 				APP_PROVISIONING_PROFILE_SPECIFIER = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Sources/Litter/Litter.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = "$(APP_CODE_SIGN_STYLE)";
 				INFOPLIST_FILE = Sources/Litter/Info.plist;
-				INFOPLIST_KEY_UIBackgroundModes = "audio fetch remote-notification";
+				INFOPLIST_KEY_UIBackgroundModes = "audio fetch";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				OTHER_LDFLAGS = "$(inherited) -lc++ -lz -lresolv -lcodex_mobile_client";
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter;
 				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = Sources/Litter/Bridge/codex_bridge_objc.h;
@@ -2491,7 +2446,6 @@
 		30A48842A69D852D7C781886 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = Sources/LitterLiveActivity/LitterLiveActivity.entitlements;
 				CODE_SIGN_STYLE = "$(LIVE_ACTIVITY_CODE_SIGN_STYLE)";
 				ENABLE_DEBUG_DYLIB = NO;
 				INFOPLIST_FILE = Sources/LitterLiveActivity/Info.plist;
@@ -2503,7 +2457,7 @@
 				);
 				LIVE_ACTIVITY_CODE_SIGN_STYLE = Automatic;
 				LIVE_ACTIVITY_PROVISIONING_PROFILE_SPECIFIER = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter.liveactivity;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.liveactivity;
 				PROVISIONING_PROFILE_SPECIFIER = "$(LIVE_ACTIVITY_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -2517,17 +2471,16 @@
 				APP_CODE_SIGN_STYLE = Automatic;
 				APP_PROVISIONING_PROFILE_SPECIFIER = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Sources/Litter/Litter.entitlements;
 				CODE_SIGN_IDENTITY = "$(APP_CODE_SIGN_IDENTITY)";
 				CODE_SIGN_STYLE = "$(APP_CODE_SIGN_STYLE)";
 				INFOPLIST_FILE = Sources/Litter/Info.plist;
-				INFOPLIST_KEY_UIBackgroundModes = "audio fetch remote-notification";
+				INFOPLIST_KEY_UIBackgroundModes = "audio fetch";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter;
 				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = Sources/Litter/Bridge/codex_bridge_objc.h;
@@ -2592,7 +2545,6 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = UH66Q8ZAYG;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -2641,7 +2593,7 @@
 				);
 				"LIBRARY_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) $(PROJECT_DIR)/GeneratedRust/ios-macabi";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter;
 				PRODUCT_NAME = Litter;
 				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = auto;
@@ -2658,7 +2610,6 @@
 		68C18C3BAED7CD753348C026 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = Sources/LitterLiveActivity/LitterLiveActivity.entitlements;
 				CODE_SIGN_IDENTITY = "$(LIVE_ACTIVITY_CODE_SIGN_IDENTITY)";
 				CODE_SIGN_STYLE = "$(LIVE_ACTIVITY_CODE_SIGN_STYLE)";
 				INFOPLIST_FILE = Sources/LitterLiveActivity/Info.plist;
@@ -2671,7 +2622,7 @@
 				LIVE_ACTIVITY_CODE_SIGN_IDENTITY = "";
 				LIVE_ACTIVITY_CODE_SIGN_STYLE = Automatic;
 				LIVE_ACTIVITY_PROVISIONING_PROFILE_SPECIFIER = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter.liveactivity;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.liveactivity;
 				PROVISIONING_PROFILE_SPECIFIER = "$(LIVE_ACTIVITY_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -2735,7 +2686,6 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = UH66Q8ZAYG;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -2830,7 +2780,6 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = UH66Q8ZAYG;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -2885,12 +2834,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Sources/LitterWatch/LitterWatch.entitlements;
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = "$(inherited)";
 				INFOPLIST_FILE = Sources/LitterWatch/Info.plist;
 				OTHER_LDFLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.watchkitapp;
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SUPPORTS_MACCATALYST = NO;
@@ -2904,7 +2852,6 @@
 		A65C81A045878322F8C946E0 /* DeveloperID */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = Sources/LitterWatchComplications/LitterWatchComplications.entitlements;
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = "$(inherited)";
 				INFOPLIST_FILE = Sources/LitterWatchComplications/Info.plist;
@@ -2914,7 +2861,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				OTHER_LDFLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter.watchkitapp.complications;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.watchkitapp.complications;
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SWIFT_INCLUDE_PATHS = "$(inherited)";
@@ -2942,7 +2889,7 @@
 				"LIBRARY_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) $(PROJECT_DIR)/GeneratedRust/ios-macabi";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				OTHER_LDFLAGS = "$(inherited) -lc++ -lz -lresolv -lcodex_mobile_client";
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter;
 				PRODUCT_NAME = Litter;
 				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = auto;
@@ -2979,7 +2926,6 @@
 		CAC1F742DDAFD5919FF29205 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = Sources/LitterWatchComplications/LitterWatchComplications.entitlements;
 				CODE_SIGN_IDENTITY = "$(WATCH_COMP_CODE_SIGN_IDENTITY)";
 				CODE_SIGN_STYLE = "$(WATCH_COMP_CODE_SIGN_STYLE)";
 				GENERATE_INFOPLIST_FILE = NO;
@@ -2991,7 +2937,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				OTHER_LDFLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter.watchkitapp.complications;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.watchkitapp.complications;
 				PROVISIONING_PROFILE_SPECIFIER = "$(WATCH_COMP_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -3024,7 +2970,7 @@
 				);
 				"LIBRARY_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) $(PROJECT_DIR)/GeneratedRust/ios-macabi";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter;
 				PRODUCT_NAME = Litter;
 				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = auto;
@@ -3041,7 +2987,6 @@
 		CE4A8505D948694544FBD8E4 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = Sources/LitterWatchComplications/LitterWatchComplications.entitlements;
 				CODE_SIGN_STYLE = "$(WATCH_COMP_CODE_SIGN_STYLE)";
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = "$(inherited)";
@@ -3052,7 +2997,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				OTHER_LDFLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter.watchkitapp.complications;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.watchkitapp.complications;
 				PROVISIONING_PROFILE_SPECIFIER = "$(WATCH_COMP_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -3068,7 +3013,6 @@
 		D1DCFBB34EC8C2DF61DC0840 /* DeveloperID */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = Sources/LitterLiveActivity/LitterLiveActivity.entitlements;
 				INFOPLIST_FILE = Sources/LitterLiveActivity/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -3076,7 +3020,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter.liveactivity;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.liveactivity;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -3086,16 +3030,15 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Sources/Litter/Litter.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = Sources/Litter/Info.plist;
-				INFOPLIST_KEY_UIBackgroundModes = "audio fetch remote-notification";
+				INFOPLIST_KEY_UIBackgroundModes = "audio fetch";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = Sources/Litter/Bridge/codex_bridge_objc.h;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -3106,13 +3049,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Sources/LitterWatch/LitterWatch.entitlements;
 				CODE_SIGN_STYLE = "$(WATCH_CODE_SIGN_STYLE)";
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = "$(inherited)";
 				INFOPLIST_FILE = Sources/LitterWatch/Info.plist;
 				OTHER_LDFLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.sigkitten.litter.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.watchkitapp;
 				PROVISIONING_PROFILE_SPECIFIER = "$(WATCH_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;

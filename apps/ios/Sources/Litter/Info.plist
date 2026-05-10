@@ -14,7 +14,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.sigkitten.litter.auth</string>
+			<string>com.niklassheth.litter.auth</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>litterauth</string>
