@@ -2404,7 +2404,7 @@
 				HEADER_SEARCH_PATHS = "$(inherited)";
 				INFOPLIST_FILE = Sources/LitterWatch/Info.plist;
 				OTHER_LDFLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter.watchkitapp;
 				PROVISIONING_PROFILE_SPECIFIER = "$(WATCH_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -2435,7 +2435,7 @@
 					"@executable_path/Frameworks",
 				);
 				OTHER_LDFLAGS = "$(inherited) -lc++ -lz -lresolv -lcodex_mobile_client";
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter;
 				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = Sources/Litter/Bridge/codex_bridge_objc.h;
@@ -2457,7 +2457,7 @@
 				);
 				LIVE_ACTIVITY_CODE_SIGN_STYLE = Automatic;
 				LIVE_ACTIVITY_PROVISIONING_PROFILE_SPECIFIER = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.liveactivity;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter.liveactivity;
 				PROVISIONING_PROFILE_SPECIFIER = "$(LIVE_ACTIVITY_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -2480,7 +2480,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter;
 				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = Sources/Litter/Bridge/codex_bridge_objc.h;
@@ -2593,7 +2593,7 @@
 				);
 				"LIBRARY_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) $(PROJECT_DIR)/GeneratedRust/ios-macabi";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter;
 				PRODUCT_NAME = Litter;
 				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = auto;
@@ -2622,7 +2622,7 @@
 				LIVE_ACTIVITY_CODE_SIGN_IDENTITY = "";
 				LIVE_ACTIVITY_CODE_SIGN_STYLE = Automatic;
 				LIVE_ACTIVITY_PROVISIONING_PROFILE_SPECIFIER = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.liveactivity;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter.liveactivity;
 				PROVISIONING_PROFILE_SPECIFIER = "$(LIVE_ACTIVITY_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -2838,7 +2838,7 @@
 				HEADER_SEARCH_PATHS = "$(inherited)";
 				INFOPLIST_FILE = Sources/LitterWatch/Info.plist;
 				OTHER_LDFLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter.watchkitapp;
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SUPPORTS_MACCATALYST = NO;
@@ -2861,7 +2861,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				OTHER_LDFLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.watchkitapp.complications;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter.watchkitapp.complications;
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SWIFT_INCLUDE_PATHS = "$(inherited)";
@@ -2889,7 +2889,7 @@
 				"LIBRARY_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) $(PROJECT_DIR)/GeneratedRust/ios-macabi";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				OTHER_LDFLAGS = "$(inherited) -lc++ -lz -lresolv -lcodex_mobile_client";
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter;
 				PRODUCT_NAME = Litter;
 				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = auto;
@@ -2937,7 +2937,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				OTHER_LDFLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.watchkitapp.complications;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter.watchkitapp.complications;
 				PROVISIONING_PROFILE_SPECIFIER = "$(WATCH_COMP_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -2970,7 +2970,7 @@
 				);
 				"LIBRARY_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) $(PROJECT_DIR)/GeneratedRust/ios-macabi";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter;
 				PRODUCT_NAME = Litter;
 				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = auto;
@@ -2997,7 +2997,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				OTHER_LDFLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.watchkitapp.complications;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter.watchkitapp.complications;
 				PROVISIONING_PROFILE_SPECIFIER = "$(WATCH_COMP_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -3020,7 +3020,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.liveactivity;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter.liveactivity;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -3038,7 +3038,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = Sources/Litter/Bridge/codex_bridge_objc.h;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -3054,7 +3054,7 @@
 				HEADER_SEARCH_PATHS = "$(inherited)";
 				INFOPLIST_FILE = Sources/LitterWatch/Info.plist;
 				OTHER_LDFLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.niklassheth.litter.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = org.hypergolic.litter.watchkitapp;
 				PROVISIONING_PROFILE_SPECIFIER = "$(WATCH_PROVISIONING_PROFILE_SPECIFIER)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
