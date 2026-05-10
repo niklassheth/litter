@@ -774,6 +774,7 @@ private struct GoalCardChromeModifier: ViewModifier {
     let cornerRadius: CGFloat
 
     func body(content: Content) -> some View {
+        #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             content
                 .glassEffect(
@@ -802,6 +803,29 @@ private struct GoalCardChromeModifier: ViewModifier {
                         .stroke(statusTint.opacity(0.28), lineWidth: 1)
                 )
         }
+        #else
+        fallback(content: content)
+        #endif
+    }
+
+    @ViewBuilder
+    private func fallback(content: Content) -> some View {
+        content
+            .background(
+                LinearGradient(
+                    colors: [
+                        LitterTheme.codeBackground.opacity(0.92),
+                        statusTint.opacity(0.08)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(statusTint.opacity(0.28), lineWidth: 1)
+            )
     }
 }
 
