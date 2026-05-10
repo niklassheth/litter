@@ -172,7 +172,7 @@ fn ipc_command_error_context(error: &IpcError) -> &'static str {
 }
 
 fn server_supports_ipc(session: &ServerSession) -> bool {
-    session.ssh_client().is_some() || session.has_ipc()
+    session.has_ipc()
 }
 
 fn server_has_live_ipc(
