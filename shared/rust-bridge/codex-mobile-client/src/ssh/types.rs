@@ -5,13 +5,15 @@
 use std::io;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
+use std::pin::Pin;
 use std::process::ExitStatus;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use russh::ChannelWriteHalf;
 use russh::Sig;
 use russh::client::Msg;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::sync::{Mutex, watch};
 
 /// Credentials for establishing an SSH connection.
@@ -137,6 +139,46 @@ pub struct ExecResult {
 pub type SshExecStdin = Box<dyn AsyncWrite + Send + Unpin>;
 pub type SshExecStdout = Box<dyn AsyncRead + Send + Unpin>;
 pub type SshExecStderr = Box<dyn AsyncRead + Send + Unpin>;
+
+/// Bidirectional stream backed by a remote exec child's stdout/stdin.
+pub struct SshExecIo {
+    stdout: SshExecStdout,
+    stdin: SshExecStdin,
+}
+
+impl SshExecIo {
+    pub(crate) fn new(stdout: SshExecStdout, stdin: SshExecStdin) -> Self {
+        Self { stdout, stdin }
+    }
+}
+
+impl AsyncRead for SshExecIo {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.stdout).poll_read(cx, buf)
+    }
+}
+
+impl AsyncWrite for SshExecIo {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        Pin::new(&mut self.stdin).poll_write(cx, buf)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.stdin).poll_flush(cx)
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.stdin).poll_shutdown(cx)
+    }
+}
 
 /// Streaming SSH exec child.
 ///

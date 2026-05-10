@@ -1474,86 +1474,52 @@ impl MobileClient {
         let use_ipv6 = config.host.contains(':');
         let remote_shell = ssh_client.detect_remote_shell().await;
         if remote_shell == RemoteShell::Posix {
-            match ssh_client.remote_app_server_control_socket_if_present().await {
+            match ssh_client
+                .remote_app_server_control_socket_if_present()
+                .await
+            {
                 Ok(Some(control_socket_path)) => {
                     info!(
                         "MobileClient: found remote app-server control socket server_id={} socket={}",
                         config.server_id, control_socket_path
                     );
-                    match ssh_client
-                        .forward_app_server_proxy_to(0, &control_socket_path)
-                        .await
-                    {
-                        Ok(local_port) => {
-                            match ssh_client
-                                .wait_for_forwarded_websocket_ready(
-                                    local_port,
-                                    None,
-                                    remote_shell,
-                                    remote_shell.null_device(),
-                                    None,
-                                )
-                                .await
-                            {
-                                Ok(()) => {
-                                    info!(
-                                        "MobileClient: using remote app-server control socket server_id={} local_tunnel_port={} socket={}",
-                                        config.server_id, local_port, control_socket_path
-                                    );
-                                    let bootstrap = SshBootstrapResult {
-                                        server_port: 0,
-                                        tunnel_local_port: local_port,
-                                        server_version: None,
-                                        pid: None,
-                                    };
-                                    let result = self
-                                        .finish_connect_remote_over_ssh(
-                                            config,
-                                            ssh_credentials,
-                                            accept_unknown_host,
-                                            ssh_client,
-                                            bootstrap,
-                                            working_dir,
-                                            ipc_socket_path_override,
-                                            Some(control_socket_path),
-                                        )
-                                        .await;
-                                    match &result {
-                                        Ok(_) => {
-                                            self.app_store.update_server_connection_progress(
-                                                server_id.as_str(),
-                                                None,
-                                            );
-                                        }
-                                        Err(_) => {
-                                            self.app_store.update_server_health(
-                                                server_id.as_str(),
-                                                ServerHealthSnapshot::Disconnected,
-                                            );
-                                            self.app_store.update_server_connection_progress(
-                                                server_id.as_str(),
-                                                None,
-                                            );
-                                        }
-                                    }
-                                    return result;
-                                }
-                                Err(error) => {
-                                    warn!(
-                                        "MobileClient: remote app-server control socket probe failed server_id={} socket={} error={}",
-                                        config.server_id, control_socket_path, error
-                                    );
-                                    let _ = ssh_client.abort_forward_port(local_port).await;
-                                }
-                            }
-                        }
-                        Err(error) => {
-                            warn!(
-                                "MobileClient: remote app-server control socket forward failed server_id={} socket={} error={}",
-                                config.server_id, control_socket_path, error
-                            );
-                        }
+                    info!(
+                        "MobileClient: using remote app-server control socket server_id={} socket={}",
+                        config.server_id, control_socket_path
+                    );
+                    let bootstrap = SshBootstrapResult {
+                        server_port: 0,
+                        tunnel_local_port: 0,
+                        server_version: None,
+                        pid: None,
+                    };
+                    let result = self
+                        .finish_connect_remote_over_ssh(
+                            config.clone(),
+                            ssh_credentials.clone(),
+                            accept_unknown_host,
+                            Arc::clone(&ssh_client),
+                            bootstrap,
+                            working_dir.clone(),
+                            ipc_socket_path_override.clone(),
+                            Some(control_socket_path.clone()),
+                        )
+                        .await;
+                    if result.is_ok() {
+                        self.app_store
+                            .update_server_connection_progress(server_id.as_str(), None);
+                        return result;
                     }
+                    warn!(
+                        "MobileClient: remote app-server control socket connect failed server_id={} socket={} error={}",
+                        config.server_id,
+                        control_socket_path,
+                        result
+                            .as_ref()
+                            .err()
+                            .map(|e| e.to_string())
+                            .unwrap_or_default()
+                    );
                 }
                 Ok(None) => {
                     debug!(
@@ -1660,13 +1626,17 @@ impl MobileClient {
         if bootstrap.server_port != 0 {
             config.port = bootstrap.server_port;
         }
-        config.websocket_url = Some(format!("ws://127.0.0.1:{}", bootstrap.tunnel_local_port));
+        config.websocket_url = Some(if app_server_control_socket_path.is_some() {
+            format!("ws://codex-app-server-proxy/{}", config.server_id)
+        } else {
+            format!("ws://127.0.0.1:{}", bootstrap.tunnel_local_port)
+        });
         config.is_local = false;
         config.tls = false;
         let ssh_pid = Arc::new(StdMutex::new(bootstrap.pid));
         let ssh_reconnect_transport = SshReconnectTransport {
             ssh_client: Arc::clone(&ssh_client),
-            local_port: bootstrap.tunnel_local_port,
+            local_port: Arc::new(StdMutex::new(bootstrap.tunnel_local_port)),
             remote_port: Arc::new(StdMutex::new(bootstrap.server_port)),
             app_server_control_socket_path: app_server_control_socket_path.clone(),
             prefer_ipv6: config.host.contains(':'),
@@ -1703,9 +1673,18 @@ impl MobileClient {
         // SSH-bridges path, so `connect_remote_multiplexed` only sees populated
         // clients.
         let (_, connect_args) = crate::session::connection::remote_connect_args(&config);
-        let initial_client = match crate::session::connection::connect_remote_client(&connect_args)
-            .await
-        {
+        let initial_client_result =
+            if let Some(socket_path) = app_server_control_socket_path.as_deref() {
+                crate::session::connection::connect_remote_client_over_app_server_proxy(
+                    &ssh_client,
+                    &connect_args,
+                    socket_path,
+                )
+                .await
+            } else {
+                crate::session::connection::connect_remote_client(&connect_args).await
+            };
+        let initial_client = match initial_client_result {
             Ok(client) => client,
             Err(error) => {
                 warn!(
@@ -1714,7 +1693,9 @@ impl MobileClient {
                     ssh_credentials.host.as_str(),
                     error
                 );
-                ssh_client.disconnect().await;
+                if app_server_control_socket_path.is_none() {
+                    ssh_client.disconnect().await;
+                }
                 return Err(error);
             }
         };
@@ -1752,7 +1733,9 @@ impl MobileClient {
                     ssh_credentials.host.as_str(),
                     error
                 );
-                ssh_client.disconnect().await;
+                if app_server_control_socket_path.is_none() {
+                    ssh_client.disconnect().await;
+                }
                 return Err(error);
             }
         };

@@ -62,8 +62,8 @@ pub(crate) use crate::ssh_scripts::posix::{PACKAGE_MANAGER_PROBE, PROFILE_INIT};
 pub(crate) use exec::build_posix_exec_command;
 pub(crate) use types::{CodexInstallOutcome, RemotePlatform, RemoteShell, ResolvedCodexRelease};
 pub use types::{
-    ExecResult, SshAuth, SshBootstrapResult, SshCredentials, SshError, SshExecChild, SshExecStderr,
-    SshExecStdin, SshExecStdout,
+    ExecResult, SshAuth, SshBootstrapResult, SshCredentials, SshError, SshExecChild, SshExecIo,
+    SshExecStderr, SshExecStdin, SshExecStdout,
 };
 
 // SSH channel sizing — tuned for high-throughput interactive workloads.
@@ -114,10 +114,6 @@ pub(super) struct ForwardTask {
 impl ForwardTask {
     pub(super) fn streamlocal_remote_host(socket_path: &str) -> String {
         format!("unix:{socket_path}")
-    }
-
-    pub(super) fn app_server_proxy_remote_host(socket_path: &str) -> String {
-        format!("app-server-proxy:{socket_path}")
     }
 }
 

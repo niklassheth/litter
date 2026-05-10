@@ -671,100 +671,74 @@ pub(crate) async fn run_guided_ssh_connect(
         .update_server_connection_progress(&server_id, Some(progress.clone()));
 
     if remote_shell == RemoteShell::Posix {
-        match ssh_client.remote_app_server_control_socket_if_present().await {
+        match ssh_client
+            .remote_app_server_control_socket_if_present()
+            .await
+        {
             Ok(Some(control_socket_path)) => {
                 info!(
                     "guided ssh connect found remote app-server control socket server_id={} socket={}",
                     server_id, control_socket_path
                 );
-                match ssh_client
-                    .forward_app_server_proxy_to(0, &control_socket_path)
-                    .await
-                {
-                    Ok(local_port) => {
-                        match ssh_client
-                            .wait_for_forwarded_websocket_ready(
-                                local_port,
-                                None,
-                                remote_shell,
-                                remote_shell.null_device(),
-                                None,
-                            )
-                            .await
-                        {
-                            Ok(()) => {
-                                info!(
-                                    "guided ssh connect using remote app-server control socket server_id={} local_tunnel_port={} socket={}",
-                                    server_id, local_port, control_socket_path
-                                );
-                                progress.update_step(
-                                    AppConnectionStepKind::StartingAppServer,
-                                    AppConnectionStepState::Completed,
-                                    Some("Desktop app server".to_string()),
-                                );
-                                progress.update_step(
-                                    AppConnectionStepKind::OpeningTunnel,
-                                    AppConnectionStepState::Completed,
-                                    Some(format!("127.0.0.1:{local_port}")),
-                                );
-                                progress.update_step(
-                                    AppConnectionStepKind::Connected,
-                                    AppConnectionStepState::InProgress,
-                                    None,
-                                );
-                                mobile_client
-                                    .app_store
-                                    .update_server_connection_progress(
-                                        &server_id,
-                                        Some(progress.clone()),
-                                    );
+                progress.update_step(
+                    AppConnectionStepKind::StartingAppServer,
+                    AppConnectionStepState::Completed,
+                    Some("Desktop app server".to_string()),
+                );
+                progress.update_step(
+                    AppConnectionStepKind::OpeningTunnel,
+                    AppConnectionStepState::Completed,
+                    Some("app-server proxy".to_string()),
+                );
+                progress.update_step(
+                    AppConnectionStepKind::Connected,
+                    AppConnectionStepState::InProgress,
+                    None,
+                );
+                mobile_client
+                    .app_store
+                    .update_server_connection_progress(&server_id, Some(progress.clone()));
 
-                                let host = credentials.host.clone();
-                                mobile_client
-                                    .finish_connect_remote_over_ssh(
-                                        config,
-                                        credentials,
-                                        accept_unknown_host,
-                                        ssh_client,
-                                        SshBootstrapResult {
-                                            server_port: 0,
-                                            tunnel_local_port: local_port,
-                                            server_version: None,
-                                            pid: None,
-                                        },
-                                        working_dir,
-                                        ipc_socket_path_override,
-                                        Some(control_socket_path),
-                                    )
-                                    .await
-                                    .map_err(|error| ClientError::Transport(error.to_string()))?;
-                                info!(
-                                    "guided ssh connect attached remote session via app-server control socket server_id={} host={}",
-                                    server_id,
-                                    host.as_str()
-                                );
+                let host = credentials.host.clone();
+                let result = mobile_client
+                    .finish_connect_remote_over_ssh(
+                        config.clone(),
+                        credentials.clone(),
+                        accept_unknown_host,
+                        Arc::clone(&ssh_client),
+                        SshBootstrapResult {
+                            server_port: 0,
+                            tunnel_local_port: 0,
+                            server_version: None,
+                            pid: None,
+                        },
+                        working_dir.clone(),
+                        ipc_socket_path_override.clone(),
+                        Some(control_socket_path.clone()),
+                    )
+                    .await;
+                if result.is_ok() {
+                    info!(
+                        "guided ssh connect attached remote session via app-server control socket server_id={} host={}",
+                        server_id,
+                        host.as_str()
+                    );
 
-                                mobile_client
-                                    .app_store
-                                    .update_server_connection_progress(&server_id, None);
-                                return Ok(());
-                            }
-                            Err(error) => {
-                                warn!(
-                                    "guided ssh connect remote app-server control socket probe failed server_id={} socket={} error={}",
-                                    server_id, control_socket_path, error
-                                );
-                                let _ = ssh_client.abort_forward_port(local_port).await;
-                            }
-                        }
-                    }
-                    Err(error) => {
-                        warn!(
-                            "guided ssh connect remote app-server control socket forward failed server_id={} socket={} error={}",
-                            server_id, control_socket_path, error
-                        );
-                    }
+                    mobile_client
+                        .app_store
+                        .update_server_connection_progress(&server_id, None);
+                    return Ok(());
                 }
+                warn!(
+                    "guided ssh connect remote app-server control socket connect failed server_id={} socket={} error={}",
+                    server_id,
+                    control_socket_path,
+                    result
+                        .as_ref()
+                        .err()
+                        .map(|e| e.to_string())
+                        .unwrap_or_default()
+                );
             }
             Ok(None) => {
                 debug!(
