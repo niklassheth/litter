@@ -115,6 +115,10 @@ impl ForwardTask {
     pub(super) fn streamlocal_remote_host(socket_path: &str) -> String {
         format!("unix:{socket_path}")
     }
+
+    pub(super) fn app_server_proxy_remote_host(socket_path: &str) -> String {
+        format!("app-server-proxy:{socket_path}")
+    }
 }
 
 // Logging helpers — every event goes through `log_rust` so the bridge log

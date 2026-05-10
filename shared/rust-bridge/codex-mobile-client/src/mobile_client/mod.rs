@@ -1480,7 +1480,10 @@ impl MobileClient {
                         "MobileClient: found remote app-server control socket server_id={} socket={}",
                         config.server_id, control_socket_path
                     );
-                    match ssh_client.forward_streamlocal_to(0, &control_socket_path).await {
+                    match ssh_client
+                        .forward_app_server_proxy_to(0, &control_socket_path)
+                        .await
+                    {
                         Ok(local_port) => {
                             match ssh_client
                                 .wait_for_forwarded_websocket_ready(

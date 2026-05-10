@@ -1369,7 +1369,7 @@ impl RemoteTransport for SshReconnectTransport {
         if let Some(socket_path) = self.app_server_control_socket_path.as_deref() {
             if let Err(error) = self
                 .ssh_client
-                .ensure_forward_streamlocal_to(self.local_port, socket_path)
+                .ensure_forward_app_server_proxy_to(self.local_port, socket_path)
                 .await
             {
                 warn!(
@@ -1400,7 +1400,7 @@ impl RemoteTransport for SshReconnectTransport {
                         Ok(Some(refreshed_socket_path)) => {
                             if let Err(forward_error) = self
                                 .ssh_client
-                                .ensure_forward_streamlocal_to(
+                                .ensure_forward_app_server_proxy_to(
                                     self.local_port,
                                     &refreshed_socket_path,
                                 )
