@@ -303,18 +303,10 @@ pub(crate) fn compute_reconnect_plan(
         return None;
     }
 
-    // 4. WebSocket URL override → RemoteUrl
-    if let Some(ref ws_url) = server.websocket_url {
-        return Some(ReconnectPlan::RemoteUrl {
-            server_id: server.id.clone(),
-            display_name: server.name.clone(),
-            websocket_url: ws_url.clone(),
-        });
-    }
-
     let mode = resolved_preferred_connection_mode(server);
 
-    // 5. Explicit SSH mode + credential → Ssh
+    // 4. Explicit SSH mode + credential → Ssh. This must win over any saved
+    // websocket URL because SSH reconnect rebuilds the local tunnel.
     if mode.as_deref() == Some("ssh") {
         if let Some(cred) = credential {
             return Some(ReconnectPlan::Ssh {
@@ -327,6 +319,15 @@ pub(crate) fn compute_reconnect_plan(
         }
         // SSH preferred but no credential — cannot reconnect
         return None;
+    }
+
+    // 5. WebSocket URL override → RemoteUrl
+    if let Some(ref ws_url) = server.websocket_url {
+        return Some(ReconnectPlan::RemoteUrl {
+            server_id: server.id.clone(),
+            display_name: server.name.clone(),
+            websocket_url: ws_url.clone(),
+        });
     }
 
     // 6. Direct Codex port available → DirectRemote
@@ -982,6 +983,27 @@ mod tests {
         s.websocket_url = Some("wss://example.com/ws".into());
         let plan = compute_reconnect_plan(&s, None, false, false);
         assert!(matches!(plan, Some(ReconnectPlan::RemoteUrl { .. })));
+    }
+
+    #[test]
+    fn plan_ssh_mode_wins_over_saved_websocket_url() {
+        let mut s = base_server();
+        s.preferred_connection_mode = Some("ssh".into());
+        s.websocket_url = Some("ws://127.0.0.1:12345".into());
+        let cred = ssh_credential();
+
+        let plan = compute_reconnect_plan(&s, Some(&cred), false, false);
+
+        assert!(matches!(plan, Some(ReconnectPlan::Ssh { .. })));
+    }
+
+    #[test]
+    fn plan_none_when_ssh_mode_with_websocket_url_but_no_credential() {
+        let mut s = base_server();
+        s.preferred_connection_mode = Some("ssh".into());
+        s.websocket_url = Some("ws://127.0.0.1:12345".into());
+
+        assert!(compute_reconnect_plan(&s, None, false, false).is_none());
     }
 
     #[test]

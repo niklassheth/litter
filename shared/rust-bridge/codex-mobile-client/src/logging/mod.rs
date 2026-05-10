@@ -183,7 +183,11 @@ pub(crate) fn install_tracing_subscriber() {
             .with_writer(android_logcat::AndroidLogMakeWriter)
             .finish();
         #[cfg(target_os = "ios")]
-        let subscriber = subscriber.with_writer(std::io::stderr).finish();
+        let subscriber = subscriber
+            // iOS does not always provide a writable stderr for app builds,
+            // and Rust's print path can surface that as a user-facing EIO.
+            .with_writer(std::io::sink)
+            .finish();
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let subscriber = subscriber.finish();
         if tracing::subscriber::set_global_default(subscriber).is_ok() {
