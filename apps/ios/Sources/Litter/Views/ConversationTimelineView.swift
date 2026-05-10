@@ -485,7 +485,7 @@ private struct ConversationTimelineItemRow: View, Equatable {
                     title: data.title.isEmpty ? "Error" : data.title,
                     content: [data.message, data.details].compactMap { $0 }.joined(separator: "\n\n"),
                     accent: LitterTheme.danger,
-                    iconName: "exclamationmark.triangle.fill",
+                    iconName: "exclamationmark.triangle.fill"
                 )
             )
         case .note(let data):
