@@ -275,9 +275,14 @@ fun ConversationScreen(
         collaborationModesLoading = false
     }
 
-    // Pending user input for this thread
-    val pendingInput = remember(snapshot, threadKey) {
-        snapshot?.pendingUserInputs?.firstOrNull { it.threadId == threadKey.threadId }
+    // Pending user input for this thread. The dismissal ledger is shared with
+    // the global ApprovalOverlay via [LocalDismissedUserInputs] so dismissing
+    // from either surface hides the request everywhere.
+    val dismissedUserInputs = com.litter.android.ui.LocalDismissedUserInputs.current
+    val pendingInput = remember(snapshot, threadKey, dismissedUserInputs.ids) {
+        snapshot?.pendingUserInputs?.firstOrNull {
+            it.threadId == threadKey.threadId && !dismissedUserInputs.isDismissed(it.id)
+        }
     }
 
     val activeTaskSummary = remember(items) {
@@ -832,6 +837,9 @@ fun ConversationScreen(
                         onShowSkillsSheet = { showSkillsSheet = true },
                         onSlashError = { slashErrorMessage = it },
                         pendingUserInput = pendingInput,
+                        onDismissPendingUserInput = {
+                            pendingInput?.let { dismissedUserInputs.dismiss(it.id) }
+                        },
                     )
 
                     Spacer(Modifier.navigationBarsPadding())
