@@ -1,10 +1,7 @@
 use crate::ffi::ClientError;
 use crate::ffi::shared::{shared_mobile_client, shared_runtime};
 use crate::session::connection::ServerConfig;
-use crate::ssh::{
-    CodexInstallOutcome, RemoteShell, SshAuth, SshBootstrapResult, SshClient, SshCredentials,
-    SshError,
-};
+use crate::ssh::{CodexInstallOutcome, RemoteShell, SshAuth, SshClient, SshCredentials, SshError};
 use crate::store::{
     AppConnectionProgressSnapshot, AppConnectionStepKind, AppConnectionStepState,
     ServerHealthSnapshot,
@@ -195,12 +192,11 @@ impl SshBridge {
             },
         );
         info!(
-            "SshBridge: ssh_connect_and_bootstrap succeeded normalized_host={} ssh_port={} session_id={} remote_port={} local_tunnel_port={} pid={:?}",
+            "SshBridge: ssh_connect_and_bootstrap succeeded normalized_host={} ssh_port={} session_id={} shell={:?} pid={:?}",
             normalized_host.as_str(),
             port,
             session_id,
-            bootstrap.server_port,
-            bootstrap.tunnel_local_port,
+            bootstrap.shell,
             bootstrap.pid
         );
 
@@ -208,7 +204,7 @@ impl SshBridge {
             session_id,
             normalized_host,
             server_port: bootstrap.server_port,
-            tunnel_local_port: Some(bootstrap.tunnel_local_port),
+            tunnel_local_port: None,
             server_version: bootstrap.server_version,
             pid: bootstrap.pid,
             wake_mac,
@@ -670,93 +666,8 @@ pub(crate) async fn run_guided_ssh_connect(
         .app_store
         .update_server_connection_progress(&server_id, Some(progress.clone()));
 
-    if remote_shell == RemoteShell::Posix {
-        match ssh_client
-            .remote_app_server_control_socket_if_present()
-            .await
-        {
-            Ok(Some(control_socket_path)) => {
-                info!(
-                    "guided ssh connect found remote app-server control socket server_id={} socket={}",
-                    server_id, control_socket_path
-                );
-                progress.update_step(
-                    AppConnectionStepKind::StartingAppServer,
-                    AppConnectionStepState::Completed,
-                    Some("Desktop app server".to_string()),
-                );
-                progress.update_step(
-                    AppConnectionStepKind::OpeningTunnel,
-                    AppConnectionStepState::Completed,
-                    Some("app-server proxy".to_string()),
-                );
-                progress.update_step(
-                    AppConnectionStepKind::Connected,
-                    AppConnectionStepState::InProgress,
-                    None,
-                );
-                mobile_client
-                    .app_store
-                    .update_server_connection_progress(&server_id, Some(progress.clone()));
-
-                let host = credentials.host.clone();
-                let result = mobile_client
-                    .finish_connect_remote_over_ssh(
-                        config.clone(),
-                        credentials.clone(),
-                        accept_unknown_host,
-                        Arc::clone(&ssh_client),
-                        SshBootstrapResult {
-                            server_port: 0,
-                            tunnel_local_port: 0,
-                            server_version: None,
-                            pid: None,
-                        },
-                        working_dir.clone(),
-                        ipc_socket_path_override.clone(),
-                        Some(control_socket_path.clone()),
-                    )
-                    .await;
-                if result.is_ok() {
-                    info!(
-                        "guided ssh connect attached remote session via app-server control socket server_id={} host={}",
-                        server_id,
-                        host.as_str()
-                    );
-
-                    mobile_client
-                        .app_store
-                        .update_server_connection_progress(&server_id, None);
-                    return Ok(());
-                }
-                warn!(
-                    "guided ssh connect remote app-server control socket connect failed server_id={} socket={} error={}",
-                    server_id,
-                    control_socket_path,
-                    result
-                        .as_ref()
-                        .err()
-                        .map(|e| e.to_string())
-                        .unwrap_or_default()
-                );
-            }
-            Ok(None) => {
-                debug!(
-                    "guided ssh connect no remote app-server control socket found server_id={}",
-                    server_id
-                );
-            }
-            Err(error) => {
-                warn!(
-                    "guided ssh connect remote app-server control socket probe failed server_id={} error={}",
-                    server_id, error
-                );
-            }
-        }
-    }
-
     info!(
-        "guided ssh connect bootstrapping app server server_id={} host={}",
+        "guided ssh connect bootstrapping socket app server server_id={} host={}",
         server_id,
         credentials.host.as_str()
     );
@@ -769,19 +680,19 @@ pub(crate) async fn run_guided_ssh_connect(
         .await
         .map_err(map_ssh_error)?;
     info!(
-        "guided ssh connect bootstrap completed server_id={} remote_port={} local_tunnel_port={} pid={:?}",
-        server_id, bootstrap.server_port, bootstrap.tunnel_local_port, bootstrap.pid
+        "guided ssh connect socket bootstrap completed server_id={} shell={:?} pid={:?}",
+        server_id, bootstrap.shell, bootstrap.pid
     );
 
     progress.update_step(
         AppConnectionStepKind::StartingAppServer,
         AppConnectionStepState::Completed,
-        Some(format!("Remote port {}", bootstrap.server_port)),
+        Some("Socket app server".to_string()),
     );
     progress.update_step(
         AppConnectionStepKind::OpeningTunnel,
         AppConnectionStepState::Completed,
-        Some(format!("127.0.0.1:{}", bootstrap.tunnel_local_port)),
+        Some("app-server proxy".to_string()),
     );
     progress.update_step(
         AppConnectionStepKind::Connected,
@@ -799,15 +710,9 @@ pub(crate) async fn run_guided_ssh_connect(
             credentials,
             accept_unknown_host,
             ssh_client,
-            SshBootstrapResult {
-                server_port: bootstrap.server_port,
-                tunnel_local_port: bootstrap.tunnel_local_port,
-                server_version: bootstrap.server_version,
-                pid: bootstrap.pid,
-            },
+            bootstrap,
             working_dir,
             ipc_socket_path_override,
-            None,
         )
         .await
         .map_err(|error| ClientError::Transport(error.to_string()))?;

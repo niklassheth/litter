@@ -15,9 +15,7 @@ use serde::{Deserialize, Serialize};
 use tokio::io::duplex;
 use tracing::{debug, info, warn};
 
-use crate::session::connection::{
-    RuntimeRemoteSessionResource, SshReconnectTransport, connect_remote_client,
-};
+use crate::session::connection::{RuntimeRemoteSessionResource, SshReconnectTransport};
 use crate::ssh::{PROFILE_INIT, RemoteShell, SshClient, SshError, shell_quote};
 use crate::ssh_detached_launcher::SshDetachedLauncher;
 use crate::ssh_launcher::SshLauncher;
@@ -348,7 +346,7 @@ async fn connect_codex_via_ssh(
     prefer_ipv6: bool,
 ) -> Result<(AppServerClient, SshReconnectTransport), SshBridgeError> {
     let bootstrap = ssh.bootstrap_codex_server(None, prefer_ipv6).await?;
-    let websocket_url = format!("ws://127.0.0.1:{}", bootstrap.tunnel_local_port);
+    let websocket_url = "app-server-proxy://codex".to_string();
     let args = RemoteAppServerConnectArgs {
         websocket_url: websocket_url.clone(),
         auth_token: None,
@@ -358,22 +356,25 @@ async fn connect_codex_via_ssh(
         opt_out_notification_methods: Vec::new(),
         channel_capacity: 256,
     };
-    let client = connect_remote_client(&args)
-        .await
-        .map_err(|error| SshBridgeError::HandshakeFailed(error.to_string()))?;
+    let client = crate::session::connection::connect_remote_client_over_app_server_proxy(
+        &ssh,
+        &args,
+        &bootstrap.codex_path,
+        bootstrap.shell,
+    )
+    .await
+    .map_err(|error| SshBridgeError::HandshakeFailed(error.to_string()))?;
     let ssh_pid = Arc::new(StdMutex::new(bootstrap.pid));
     let reconnect_transport = SshReconnectTransport {
         ssh_client: Arc::clone(&ssh),
-        local_port: Arc::new(StdMutex::new(bootstrap.tunnel_local_port)),
-        remote_port: Arc::new(StdMutex::new(bootstrap.server_port)),
-        app_server_control_socket_path: None,
-        prefer_ipv6,
+        codex_path: bootstrap.codex_path,
+        remote_shell: bootstrap.shell,
         working_dir: None,
         ssh_pid: Some(ssh_pid),
     };
     info!(
-        "ssh codex runtime connected via direct bootstrap: websocket_url={} remote_port={} local_port={}",
-        websocket_url, bootstrap.server_port, bootstrap.tunnel_local_port
+        "ssh codex runtime connected via app-server proxy: websocket_url={} pid={:?}",
+        websocket_url, bootstrap.pid
     );
     Ok((client, reconnect_transport))
 }

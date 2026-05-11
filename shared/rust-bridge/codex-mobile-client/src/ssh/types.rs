@@ -39,10 +39,14 @@ pub enum SshAuth {
 /// Result of a successful `bootstrap_codex_server` call.
 #[derive(Debug, Clone)]
 pub struct SshBootstrapResult {
+    /// Legacy TCP app-server port. Socket/proxy based bootstraps always use 0.
     pub server_port: u16,
+    /// Legacy local tunnel port. Socket/proxy based bootstraps always use 0.
     pub tunnel_local_port: u16,
     pub server_version: Option<String>,
     pub pid: Option<u32>,
+    pub(crate) codex_path: String,
+    pub(crate) shell: RemoteShell,
 }
 
 #[derive(Debug, Clone)]
@@ -82,22 +86,6 @@ impl RemoteShell {
         match self {
             RemoteShell::Posix => "posix",
             RemoteShell::PowerShell => "powershell",
-        }
-    }
-
-    /// `/dev/null` on POSIX, `NUL` on PowerShell.
-    pub(crate) fn null_device(self) -> &'static str {
-        match self {
-            RemoteShell::Posix => "/dev/null",
-            RemoteShell::PowerShell => "NUL",
-        }
-    }
-
-    /// Template for "is anything listening on TCP {{PORT}}".
-    pub(crate) fn port_listening_template(self) -> &'static str {
-        match self {
-            RemoteShell::Posix => crate::ssh_scripts::posix::PORT_LISTENING,
-            RemoteShell::PowerShell => crate::ssh_scripts::powershell::PORT_LISTENING,
         }
     }
 

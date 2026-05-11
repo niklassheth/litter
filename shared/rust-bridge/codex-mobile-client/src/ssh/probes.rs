@@ -16,17 +16,6 @@ pub(crate) fn format_process_logs(stdout: &str, stderr: &str) -> String {
 }
 
 impl SshClient {
-    pub(super) async fn is_port_listening_shell(&self, port: u16, shell: RemoteShell) -> bool {
-        let port_str = port.to_string();
-        let cmd =
-            crate::ssh_scripts::render(shell.port_listening_template(), &[("PORT", &port_str)]);
-
-        match self.exec_shell(&cmd, shell).await {
-            Ok(r) => !r.stdout.trim().is_empty(),
-            Err(_) => false,
-        }
-    }
-
     pub(super) async fn is_process_alive_shell(&self, pid: u32, shell: RemoteShell) -> bool {
         let cmd = match shell {
             RemoteShell::Posix => {

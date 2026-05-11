@@ -15,7 +15,7 @@
 //! - [`install`] — codex tarball / npm install + 24h update sentinel
 //! - [`resolve_binary`] — locate an existing remote codex binary
 //! - [`detect`] — remote shell + platform detection
-//! - [`probes`] — port-listening / process-alive / log-tail
+//! - [`probes`] — process-alive / log-tail / listener cleanup
 //! - [`keychain`] — macOS unlock-keychain via stdin
 //! - [`codex_binary`] — `RemoteCodexBinary` + per-shell launch builders
 //! - [`codex_release`] — GitHub releases API
@@ -50,7 +50,7 @@ use crate::logging::{LogLevelName, log_rust};
 
 use clixml::strip_clixml;
 use codex_binary::{
-    RemoteCodexBinary, resolve_codex_binary_script_posix, resolve_codex_binary_script_powershell,
+    resolve_codex_binary_script_posix, resolve_codex_binary_script_powershell,
     server_launch_command, windows_start_process_spec,
 };
 use codex_release::fetch_latest_stable_codex_release;
@@ -59,6 +59,7 @@ use parsers::{parse_install_status_and_path, parse_kv_lines};
 
 pub(crate) use crate::shell_quoting::posix_quote as shell_quote;
 pub(crate) use crate::ssh_scripts::posix::{PACKAGE_MANAGER_PROBE, PROFILE_INIT};
+pub(crate) use codex_binary::RemoteCodexBinary;
 pub(crate) use exec::build_posix_exec_command;
 pub(crate) use types::{CodexInstallOutcome, RemotePlatform, RemoteShell, ResolvedCodexRelease};
 pub use types::{
@@ -75,18 +76,6 @@ const SSH_CHANNEL_BUFFER_SIZE: usize = 512;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const EXEC_TIMEOUT: Duration = Duration::from_secs(30);
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
-
-/// Default base port for remote Codex server (matches Android).
-const DEFAULT_REMOTE_PORT: u16 = 8390;
-/// Number of candidate ports to try.
-const PORT_CANDIDATES: u16 = 21;
-
-// Bootstrap polling — see `bootstrap` module.
-const LISTEN_POLL_ATTEMPTS: u32 = 60;
-const LISTEN_POLL_INTERVAL: Duration = Duration::from_millis(500);
-const TUNNEL_HEALTH_ATTEMPTS: u32 = 20;
-const TUNNEL_HEALTH_INTERVAL: Duration = Duration::from_millis(250);
-const SYNC_DIAG_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// Seconds before we re-check GitHub for a newer Codex release.
 const CODEX_UPDATE_CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;

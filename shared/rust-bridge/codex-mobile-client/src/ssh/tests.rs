@@ -37,12 +37,12 @@ fn test_shell_quote_simple() {
 fn test_server_launch_command_for_codex() {
     let command = server_launch_command(
         &RemoteCodexBinary::Codex("/usr/local/bin/codex".into()),
-        "ws://127.0.0.1:8390",
+        "unix://",
         RemoteShell::Posix,
     );
     assert_eq!(
         command,
-        "'/usr/local/bin/codex' --enable goals app-server --listen 'ws://127.0.0.1:8390'"
+        "'/usr/local/bin/codex' --enable goals app-server --listen 'unix://'"
     );
 }
 
@@ -50,12 +50,12 @@ fn test_server_launch_command_for_codex() {
 fn test_windows_start_process_spec_for_cmd_shim() {
     let (file_path, argument_list) = windows_start_process_spec(
         &RemoteCodexBinary::Codex(r#"C:\Users\me\AppData\Roaming\npm\codex.cmd"#.into()),
-        "ws://127.0.0.1:8390",
+        "unix://",
     );
     assert_eq!(file_path, "$env:ComSpec");
     assert_eq!(
         argument_list,
-        r#"@('/d', '/c', '""C:\Users\me\AppData\Roaming\npm\codex.cmd" --enable goals app-server --listen ws://127.0.0.1:8390"')"#
+        r#"@('/d', '/c', '""C:\Users\me\AppData\Roaming\npm\codex.cmd" --enable goals app-server --listen unix://"')"#
     );
 }
 
@@ -63,12 +63,12 @@ fn test_windows_start_process_spec_for_cmd_shim() {
 fn test_windows_start_process_spec_for_exe() {
     let (file_path, argument_list) = windows_start_process_spec(
         &RemoteCodexBinary::Codex(r#"C:\Program Files\Codex\codex.exe"#.into()),
-        "ws://127.0.0.1:8390",
+        "unix://",
     );
     assert_eq!(file_path, r#"'C:\Program Files\Codex\codex.exe'"#);
     assert_eq!(
         argument_list,
-        "@('--enable', 'goals', 'app-server', '--listen', 'ws://127.0.0.1:8390')"
+        "@('--enable', 'goals', 'app-server', '--listen', 'unix://')"
     );
 }
 
@@ -166,16 +166,20 @@ fn test_ssh_credentials_construction() {
 #[test]
 fn test_bootstrap_result_clone() {
     let r = SshBootstrapResult {
-        server_port: 8390,
-        tunnel_local_port: 12345,
+        server_port: 0,
+        tunnel_local_port: 0,
         server_version: Some("1.0.0".into()),
         pid: Some(42),
+        codex_path: "/usr/local/bin/codex".into(),
+        shell: RemoteShell::Posix,
     };
     let r2 = r.clone();
-    assert_eq!(r2.server_port, 8390);
-    assert_eq!(r2.tunnel_local_port, 12345);
+    assert_eq!(r2.server_port, 0);
+    assert_eq!(r2.tunnel_local_port, 0);
     assert_eq!(r2.server_version.as_deref(), Some("1.0.0"));
     assert_eq!(r2.pid, Some(42));
+    assert_eq!(r2.codex_path, "/usr/local/bin/codex");
+    assert_eq!(r2.shell, RemoteShell::Posix);
 }
 
 #[test]
@@ -223,19 +227,4 @@ fn test_posix_resolver_probes_package_manager_bins() {
     assert!(script.contains("/usr/local/bin/codex"));
     assert!(script.find("command -v codex 2>/dev/null || true") < script.find("pnpm bin -g"));
     assert!(!script.contains("codex-app-server"));
-}
-
-#[test]
-fn test_default_remote_port() {
-    assert_eq!(DEFAULT_REMOTE_PORT, 8390);
-}
-
-#[test]
-fn test_port_candidates_range() {
-    let ports: Vec<u16> = (0..PORT_CANDIDATES)
-        .map(|i| DEFAULT_REMOTE_PORT + i)
-        .collect();
-    assert_eq!(ports.len(), 21);
-    assert_eq!(*ports.first().unwrap(), 8390);
-    assert_eq!(*ports.last().unwrap(), 8410);
 }

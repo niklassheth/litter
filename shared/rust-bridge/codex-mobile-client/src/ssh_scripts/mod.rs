@@ -39,10 +39,6 @@ pub(crate) mod posix {
     /// Emits `FRESH` or `STALE`. Placeholders: `{{INTERVAL}}` (seconds).
     pub(crate) const UPDATE_SENTINEL_CHECK: &str = include_str!("posix/update_sentinel_check.sh");
 
-    /// Detect whether anything is listening on TCP `{{PORT}}` using lsof,
-    /// then ss, then netstat (whichever is present).
-    pub(crate) const PORT_LISTENING: &str = include_str!("posix/port_listening.sh");
-
     /// Kill any listener on TCP `{{PORT}}`. Tries SIGTERM, waits, escalates
     /// to SIGKILL.
     pub(crate) const KILL_PORT_LISTENER: &str = include_str!("posix/kill_port_listener.sh");
@@ -96,9 +92,6 @@ pub(crate) mod powershell {
     /// Emits `FRESH` or `STALE`. Placeholders: `{{INTERVAL}}` (seconds).
     pub(crate) const UPDATE_SENTINEL_CHECK: &str =
         include_str!("powershell/update_sentinel_check.ps1");
-
-    /// Detect whether anything is listening on TCP `{{PORT}}`.
-    pub(crate) const PORT_LISTENING: &str = include_str!("powershell/port_listening.ps1");
 
     /// Kill the process(es) holding TCP `{{PORT}}`.
     pub(crate) const KILL_PORT_LISTENER: &str = include_str!("powershell/kill_port_listener.ps1");
