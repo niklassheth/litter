@@ -61,6 +61,7 @@ targets:
       - path: Resources/fs
         type: folder
         buildPhase: resources
+      - path: Sources/LitterLiveActivity/CodexTurnLiveActivity.swift
       - path: Sources/LitterWatch/Models/WatchModels.swift
     resources:
       - path: Sources/Litter/Resources/Fonts
@@ -77,6 +78,8 @@ targets:
         product: HairballUI
       - package: WebRTC
         product: WebRTC
+      - target: LitterLiveActivity
+        embed: true
       # Gated out for App Store submission — re-enable once a Watch
       # screenshot is uploaded in App Store Connect.
       # - target: LitterWatch
