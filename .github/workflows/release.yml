@@ -150,6 +150,9 @@ jobs:
         shell: "bash"
       - name: "Install sccache"
         uses: "mozilla-actions/sccache-action@v0.0.9"
+      - name: "Resolve Alleycat to latest main"
+        run: "./tools/scripts/update-alleycat-main.sh --kittylitter"
+        shell: "bash"
       - name: Install dist
         run: ${{ matrix.install_dist.run }}
       # Get the dist-manifest

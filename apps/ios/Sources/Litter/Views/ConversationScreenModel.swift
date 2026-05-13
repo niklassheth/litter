@@ -163,7 +163,7 @@ final class ConversationScreenModel {
         }
         let hasTurnInFlight = activeTurnId != nil || thread.info.status == .active
         let pendingUserInputRequest = appModel.snapshot?.pendingUserInputs.first {
-            $0.serverId == thread.key.serverId && $0.threadId == thread.key.threadId
+            $0.isRelevant(to: thread.key)
         }
         let activeTaskSummary = items.latestActiveTaskSummary
         let composerPrefillRequest = appModel.composerPrefillRequest.flatMap { request in

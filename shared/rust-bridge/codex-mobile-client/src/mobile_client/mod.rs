@@ -31,7 +31,8 @@ use crate::transport::{RpcError, TransportError};
 use crate::types::{
     AgentRuntimeInfo, AgentRuntimeKind, AppCollaborationModePreset, AppModeKind,
     ApprovalDecisionValue, PendingApproval, PendingApprovalSeed, PendingApprovalWithSeed,
-    PendingUserInputAnswer, PendingUserInputRequest, ThreadInfo, ThreadKey, ThreadSummaryStatus,
+    PendingUserInputAnswer, PendingUserInputRequest, PendingUserInputResponseKind,
+    PendingUserInputSeed, ThreadInfo, ThreadKey, ThreadSummaryStatus,
 };
 use codex_app_server_protocol as upstream;
 use codex_ipc::{
@@ -71,6 +72,7 @@ pub struct MobileClient {
     pub(crate) sessions: Arc<RwLock<HashMap<String, Arc<ServerSession>>>>,
     pub(crate) event_processor: Arc<EventProcessor>,
     pub app_store: Arc<AppStoreReducer>,
+    pub agent_metadata: Arc<crate::store::AgentMetadataStore>,
     pub(crate) discovery: RwLock<DiscoveryService>,
     oauth_callback_tunnels: Arc<Mutex<HashMap<String, OAuthCallbackTunnel>>>,
     pub(crate) recorder: Arc<crate::recorder::MessageRecorder>,
@@ -113,6 +115,7 @@ pub struct MobileClient {
     /// point and the install-prompt response can live on different bridges.
     pub(crate) ssh_bootstrap_flows:
         Arc<tokio::sync::Mutex<HashMap<String, ManagedSshBootstrapFlow>>>,
+    alleycat_restart_targets: Arc<StdMutex<HashMap<String, AlleycatRestartTarget>>>,
 }
 
 /// State for a single in-flight guided SSH connect. The connect task installs a
@@ -120,6 +123,11 @@ pub struct MobileClient {
 /// awaits the FFI install-prompt response to fire it.
 pub struct ManagedSshBootstrapFlow {
     pub install_decision: Option<tokio::sync::oneshot::Sender<bool>>,
+}
+
+#[derive(Debug, Clone)]
+struct AlleycatRestartTarget {
+    params: crate::alleycat::ParsedPairPayload,
 }
 
 /// A waiter registered by `update_saved_app` to receive the next
@@ -153,6 +161,14 @@ pub struct AlleycatConnectOutcome {
 const USER_INPUT_NOTE_PREFIX: &str = "user_note: ";
 const USER_INPUT_OTHER_OPTION_LABEL: &str = "None of the above";
 const USER_INPUT_RECONCILE_DELAYS_MS: [u64; 3] = [150, 800, 2500];
+const MCP_APPROVAL_FIELD_ID: &str = "__approval";
+const MCP_URL_ACTION_FIELD_ID: &str = "__url_action";
+const MCP_APPROVAL_ACCEPT_ONCE_LABEL: &str = "Allow";
+const MCP_APPROVAL_ACCEPT_SESSION_LABEL: &str = "Allow for this session";
+const MCP_APPROVAL_ACCEPT_ALWAYS_LABEL: &str = "Always allow";
+const MCP_APPROVAL_DECLINE_LABEL: &str = "Deny";
+const MCP_APPROVAL_CANCEL_LABEL: &str = "Cancel";
+const MCP_URL_FINISHED_LABEL: &str = "I finished";
 
 fn ipc_command_error_clears_server_ipc_state(error: &IpcError) -> bool {
     matches!(
@@ -402,6 +418,214 @@ fn normalize_pending_user_input_answer_entries(
     normalized
 }
 
+fn pending_user_input_first_answer<'a>(
+    answers: &'a [PendingUserInputAnswer],
+    question_id: &str,
+) -> Option<&'a str> {
+    answers
+        .iter()
+        .find(|answer| answer.question_id == question_id)
+        .and_then(|answer| {
+            answer
+                .answers
+                .iter()
+                .find_map(|entry| non_empty_trimmed(entry))
+        })
+}
+
+fn mcp_elicitation_response_json(
+    seed: &PendingUserInputSeed,
+    answers: &[PendingUserInputAnswer],
+) -> Result<serde_json::Value, RpcError> {
+    let params: upstream::McpServerElicitationRequestParams =
+        serde_json::from_value(seed.raw_params.clone()).map_err(|error| {
+            RpcError::Deserialization(format!("deserialize MCP elicitation params: {error}"))
+        })?;
+    let response = match &params.request {
+        upstream::McpServerElicitationRequest::Form {
+            requested_schema, ..
+        } if requested_schema.properties.is_empty() => {
+            let (action, meta) = mcp_approval_action_response(answers);
+            upstream::McpServerElicitationRequestResponse {
+                action,
+                content: None,
+                meta,
+            }
+        }
+        upstream::McpServerElicitationRequest::Form {
+            requested_schema, ..
+        } => {
+            let mut content = serde_json::Map::new();
+            for (id, schema) in &requested_schema.properties {
+                if let Some(value) = mcp_elicitation_answer_value(schema, id, answers) {
+                    content.insert(id.clone(), value);
+                }
+            }
+            upstream::McpServerElicitationRequestResponse {
+                action: upstream::McpServerElicitationAction::Accept,
+                content: Some(serde_json::Value::Object(content)),
+                meta: None,
+            }
+        }
+        upstream::McpServerElicitationRequest::Url { .. } => {
+            let answer = pending_user_input_first_answer(answers, MCP_URL_ACTION_FIELD_ID);
+            let action = match answer {
+                Some(MCP_URL_FINISHED_LABEL) => upstream::McpServerElicitationAction::Accept,
+                Some(MCP_APPROVAL_CANCEL_LABEL) => upstream::McpServerElicitationAction::Cancel,
+                _ => upstream::McpServerElicitationAction::Cancel,
+            };
+            upstream::McpServerElicitationRequestResponse {
+                action,
+                content: None,
+                meta: None,
+            }
+        }
+    };
+    serde_json::to_value(response)
+        .map_err(|error| RpcError::Deserialization(format!("serialize MCP response: {error}")))
+}
+
+fn mcp_approval_action_response(
+    answers: &[PendingUserInputAnswer],
+) -> (
+    upstream::McpServerElicitationAction,
+    Option<serde_json::Value>,
+) {
+    match pending_user_input_first_answer(answers, MCP_APPROVAL_FIELD_ID) {
+        Some(MCP_APPROVAL_ACCEPT_SESSION_LABEL) => (
+            upstream::McpServerElicitationAction::Accept,
+            Some(serde_json::json!({
+                codex_protocol::mcp_approval_meta::PERSIST_KEY:
+                    codex_protocol::mcp_approval_meta::PERSIST_SESSION,
+            })),
+        ),
+        Some(MCP_APPROVAL_ACCEPT_ALWAYS_LABEL) => (
+            upstream::McpServerElicitationAction::Accept,
+            Some(serde_json::json!({
+                codex_protocol::mcp_approval_meta::PERSIST_KEY:
+                    codex_protocol::mcp_approval_meta::PERSIST_ALWAYS,
+            })),
+        ),
+        Some(MCP_APPROVAL_DECLINE_LABEL) => (upstream::McpServerElicitationAction::Decline, None),
+        Some(MCP_APPROVAL_CANCEL_LABEL) => (upstream::McpServerElicitationAction::Cancel, None),
+        Some(MCP_APPROVAL_ACCEPT_ONCE_LABEL) => {
+            (upstream::McpServerElicitationAction::Accept, None)
+        }
+        _ => (upstream::McpServerElicitationAction::Cancel, None),
+    }
+}
+
+fn mcp_elicitation_answer_value(
+    schema: &upstream::McpElicitationPrimitiveSchema,
+    question_id: &str,
+    answers: &[PendingUserInputAnswer],
+) -> Option<serde_json::Value> {
+    match schema {
+        upstream::McpElicitationPrimitiveSchema::String(_) => {
+            pending_user_input_first_answer(answers, question_id)
+                .map(|value| serde_json::Value::String(value.to_string()))
+        }
+        upstream::McpElicitationPrimitiveSchema::Number(schema) => {
+            let answer = pending_user_input_first_answer(answers, question_id)?;
+            match schema.type_ {
+                upstream::McpElicitationNumberType::Integer => answer
+                    .parse::<i64>()
+                    .ok()
+                    .map(|value| serde_json::Value::Number(value.into())),
+                upstream::McpElicitationNumberType::Number => answer
+                    .parse::<f64>()
+                    .ok()
+                    .and_then(serde_json::Number::from_f64)
+                    .map(serde_json::Value::Number),
+            }
+        }
+        upstream::McpElicitationPrimitiveSchema::Boolean(_) => {
+            let answer = pending_user_input_first_answer(answers, question_id)?;
+            parse_bool_answer(answer).map(serde_json::Value::Bool)
+        }
+        upstream::McpElicitationPrimitiveSchema::Enum(schema) => {
+            mcp_enum_answer_value(schema, question_id, answers)
+        }
+    }
+}
+
+fn parse_bool_answer(answer: &str) -> Option<bool> {
+    match answer.trim().to_ascii_lowercase().as_str() {
+        "true" | "yes" | "y" | "1" | "allow" => Some(true),
+        "false" | "no" | "n" | "0" | "deny" => Some(false),
+        _ => None,
+    }
+}
+
+fn mcp_enum_answer_value(
+    schema: &upstream::McpElicitationEnumSchema,
+    question_id: &str,
+    answers: &[PendingUserInputAnswer],
+) -> Option<serde_json::Value> {
+    match schema {
+        upstream::McpElicitationEnumSchema::Legacy(schema) => {
+            let answer = pending_user_input_first_answer(answers, question_id)?;
+            let enum_names = schema.enum_names.clone().unwrap_or_default();
+            schema.enum_.iter().enumerate().find_map(|(index, value)| {
+                let label = enum_names.get(index).unwrap_or(value);
+                (answer == label || answer == value)
+                    .then(|| serde_json::Value::String(value.clone()))
+            })
+        }
+        upstream::McpElicitationEnumSchema::SingleSelect(schema) => {
+            let answer = pending_user_input_first_answer(answers, question_id)?;
+            match schema {
+                upstream::McpElicitationSingleSelectEnumSchema::Untitled(schema) => schema
+                    .enum_
+                    .iter()
+                    .find(|value| answer == value.as_str())
+                    .map(|value| serde_json::Value::String(value.clone())),
+                upstream::McpElicitationSingleSelectEnumSchema::Titled(schema) => schema
+                    .one_of
+                    .iter()
+                    .find(|entry| answer == entry.title || answer == entry.const_)
+                    .map(|entry| serde_json::Value::String(entry.const_.clone())),
+            }
+        }
+        upstream::McpElicitationEnumSchema::MultiSelect(schema) => {
+            let raw_answers = answers
+                .iter()
+                .find(|answer| answer.question_id == question_id)?
+                .answers
+                .iter()
+                .filter_map(|answer| non_empty_trimmed(answer))
+                .collect::<Vec<_>>();
+            let values = match schema {
+                upstream::McpElicitationMultiSelectEnumSchema::Untitled(schema) => raw_answers
+                    .into_iter()
+                    .filter_map(|answer| {
+                        schema
+                            .items
+                            .enum_
+                            .iter()
+                            .find(|value| answer == value.as_str())
+                            .cloned()
+                    })
+                    .map(serde_json::Value::String)
+                    .collect::<Vec<_>>(),
+                upstream::McpElicitationMultiSelectEnumSchema::Titled(schema) => raw_answers
+                    .into_iter()
+                    .filter_map(|answer| {
+                        schema
+                            .items
+                            .any_of
+                            .iter()
+                            .find(|entry| answer == entry.title || answer == entry.const_)
+                            .map(|entry| entry.const_.clone())
+                    })
+                    .map(serde_json::Value::String)
+                    .collect::<Vec<_>>(),
+            };
+            Some(serde_json::Value::Array(values))
+        }
+    }
+}
+
 fn non_empty_trimmed(value: &str) -> Option<&str> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -414,41 +638,51 @@ fn non_empty_trimmed(value: &str) -> Option<&str> {
 fn runtime_for_model_hint(value: &str) -> Option<AgentRuntimeKind> {
     let normalized = value.trim().to_ascii_lowercase();
     match normalized.as_str() {
-        "claude" | "claude-code" | "claude_code" => Some(AgentRuntimeKind::Claude),
-        "anthropic" => Some(AgentRuntimeKind::Claude),
-        "opencode" | "open-code" | "open_code" | "open code" => Some(AgentRuntimeKind::Opencode),
-        "pi" | "pi.dev" | "pidev" | "pi dev" => Some(AgentRuntimeKind::Pi),
+        "claude" | "claude-code" | "claude_code" => Some("claude".to_string()),
+        "anthropic" => Some("claude".to_string()),
+        "amp" | "ampcode" | "amp-code" | "amp_code" | "amp code" => Some("amp".to_string()),
+        "opencode" | "open-code" | "open_code" | "open code" => Some("opencode".to_string()),
+        "pi" | "pi.dev" | "pidev" | "pi dev" => Some("pi".to_string()),
         "droid" | "factory" | "factory-droid" | "factory_droid" | "factory droid" => {
-            Some(AgentRuntimeKind::Droid)
+            Some("droid".to_string())
         }
-        "codex" => Some(AgentRuntimeKind::Codex),
+        "codex" => Some("codex".to_string()),
         // Match patterns like `anthropic/claude-opus-4-7` or
         // `claude-3-5-sonnet` — i.e. a `claude` token anywhere in the
         // hint, after stripping a leading provider prefix. We treat
         // `<segment>/claude...` as Claude even if the leading segment
         // is `anthropic`.
-        _ if normalized.starts_with("claude") => Some(AgentRuntimeKind::Claude),
+        _ if normalized.starts_with("claude") => Some("claude".to_string()),
         _ if normalized
             .split('/')
             .any(|segment| segment.starts_with("claude")) =>
         {
-            Some(AgentRuntimeKind::Claude)
+            Some("claude".to_string())
         }
         _ if normalized.contains("opencode")
             || normalized.contains("open-code")
             || normalized.contains("open_code")
             || normalized.contains("open code") =>
         {
-            Some(AgentRuntimeKind::Opencode)
+            Some("opencode".to_string())
+        }
+        _ if normalized.starts_with("amp/")
+            || normalized.starts_with("amp:")
+            || normalized.starts_with("amp-")
+            || normalized.contains("ampcode")
+            || normalized.contains("amp-code")
+            || normalized.contains("amp_code") =>
+        {
+            Some("amp".to_string())
         }
         _ if normalized.starts_with("pi.dev")
             || normalized.starts_with("pidev")
             || normalized.starts_with("pi/") =>
         {
-            Some(AgentRuntimeKind::Pi)
+            Some("pi".to_string())
         }
         _ if normalized.starts_with("factory/") || normalized.starts_with("droid/") => {
-            Some(AgentRuntimeKind::Droid)
+            Some("droid".to_string())
         }
         _ => None,
     }
@@ -476,11 +710,11 @@ fn missing_runtime_kinds(
 ) -> Vec<AgentRuntimeKind> {
     let existing = existing_runtime_kinds
         .iter()
-        .copied()
+        .cloned()
         .collect::<HashSet<_>>();
     let mut missing = requested_runtime_kinds
         .iter()
-        .copied()
+        .cloned()
         .filter(|kind| !existing.contains(kind))
         .collect::<Vec<_>>();
     missing.sort();
@@ -492,7 +726,7 @@ fn alleycat_requested_runtime_kinds(
 ) -> HashSet<AgentRuntimeKind> {
     runtime_agents
         .iter()
-        .map(|(runtime_kind, _)| *runtime_kind)
+        .map(|(runtime_kind, _)| runtime_kind.clone())
         .collect()
 }
 
@@ -512,6 +746,7 @@ impl MobileClient {
             sessions,
             event_processor,
             app_store,
+            agent_metadata: crate::store::AgentMetadataStore::new(),
             discovery: RwLock::new(DiscoveryService::new(DiscoveryConfig::default())),
             oauth_callback_tunnels: Arc::new(Mutex::new(HashMap::new())),
             recorder: Arc::new(crate::recorder::MessageRecorder::new()),
@@ -523,6 +758,7 @@ impl MobileClient {
             alleycat_endpoint: Arc::new(tokio::sync::OnceCell::new()),
             alleycat_secret_key: Arc::new(StdMutex::new(None)),
             ssh_bootstrap_flows: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            alleycat_restart_targets: Arc::new(StdMutex::new(HashMap::new())),
         }
     }
 
@@ -616,20 +852,20 @@ impl MobileClient {
 
     pub(crate) fn note_thread_runtime(&self, key: ThreadKey, runtime_kind: AgentRuntimeKind) {
         self.thread_runtime_routes()
-            .insert(key.clone(), runtime_kind);
+            .insert(key.clone(), runtime_kind.clone());
         self.app_store.set_thread_agent_runtime(&key, runtime_kind);
     }
 
     pub(crate) fn runtime_for_thread(&self, key: &ThreadKey) -> AgentRuntimeKind {
-        let routed_runtime = self.thread_runtime_routes().get(key).copied();
-        if let Some(runtime_kind) = routed_runtime
-            && runtime_kind != AgentRuntimeKind::Codex
+        let routed_runtime = self.thread_runtime_routes().get(key).cloned();
+        if let Some(runtime_kind) = routed_runtime.clone()
+            && runtime_kind != "codex"
         {
             return runtime_kind;
         }
 
         if let Some(thread) = self.app_store.thread_snapshot(key) {
-            if thread.agent_runtime_kind != AgentRuntimeKind::Codex {
+            if thread.agent_runtime_kind != "codex" {
                 return thread.agent_runtime_kind;
             }
             if let Some(runtime_kind) = self.non_codex_runtime_for_thread_metadata(key, &thread) {
@@ -637,7 +873,7 @@ impl MobileClient {
             }
         }
 
-        routed_runtime.unwrap_or(AgentRuntimeKind::Codex)
+        routed_runtime.unwrap_or_else(|| "codex".to_string())
     }
 
     pub(crate) fn runtime_for_thread_start(
@@ -659,7 +895,7 @@ impl MobileClient {
             }
         }
 
-        AgentRuntimeKind::Codex
+        "codex".to_string()
     }
 
     pub(crate) fn resolve_model_selection(
@@ -677,7 +913,7 @@ impl MobileClient {
         if let Some(candidate) = exact {
             return Some(ResolvedModelSelection {
                 model: candidate.id.clone(),
-                runtime_kind: candidate.agent_runtime_kind,
+                runtime_kind: candidate.agent_runtime_kind.clone(),
             });
         }
 
@@ -687,7 +923,7 @@ impl MobileClient {
         {
             return Some(ResolvedModelSelection {
                 model: candidate.id.clone(),
-                runtime_kind: candidate.agent_runtime_kind,
+                runtime_kind: candidate.agent_runtime_kind.clone(),
             });
         }
 
@@ -775,7 +1011,7 @@ impl MobileClient {
                 .runtime_for_selected_model(&key.server_id, model)
                 .or_else(|| runtime_for_model_hint(model));
             if let Some(runtime_kind) = runtime_kind
-                && runtime_kind != AgentRuntimeKind::Codex
+                && runtime_kind != "codex".to_string()
             {
                 return Some(runtime_kind);
             }
@@ -786,7 +1022,7 @@ impl MobileClient {
             .model_provider
             .as_deref()
             .and_then(runtime_for_model_hint)
-            .filter(|runtime_kind| *runtime_kind != AgentRuntimeKind::Codex)
+            .filter(|runtime_kind| *runtime_kind != "codex".to_string())
         {
             return Some(runtime_kind);
         }
@@ -1103,9 +1339,20 @@ impl MobileClient {
             .alleycat_endpoint()
             .await
             .map_err(|error| TransportError::ConnectionFailed(error.to_string()))?;
-        crate::alleycat::list_agents(&endpoint, params)
+        let agents = crate::alleycat::list_agents(&endpoint, params)
             .await
-            .map_err(|error| TransportError::ConnectionFailed(error.to_string()))
+            .map_err(|error| TransportError::ConnectionFailed(error.to_string()))?;
+        // Cache metadata so platforms can render labels/icons/capability
+        // flags from anywhere in the app, not just at probe time.
+        self.agent_metadata.upsert_all(agents.iter().map(|agent| {
+            crate::store::AppAgentMetadata {
+                name: agent.name.clone(),
+                display_name: agent.display_name.clone(),
+                presentation: agent.presentation.clone().map(Into::into),
+                capabilities: agent.capabilities.clone().map(Into::into),
+            }
+        }));
+        Ok(agents)
     }
 
     pub async fn connect_remote_over_alleycat(
@@ -1137,7 +1384,7 @@ impl MobileClient {
                 }
                 let runtime_kind =
                     crate::alleycat::agent_runtime_kind(&agent.name, &agent.display_name)?;
-                if !seen_runtime_kinds.insert(runtime_kind) {
+                if !seen_runtime_kinds.insert(runtime_kind.clone()) {
                     return None;
                 }
                 (agent.available).then_some((runtime_kind, agent))
@@ -1153,12 +1400,14 @@ impl MobileClient {
             }
             vec![(
                 crate::alleycat::agent_runtime_kind(&agent_name, &agent_name)
-                    .unwrap_or(AgentRuntimeKind::Codex),
+                    .unwrap_or("codex".to_string()),
                 AlleycatAgentInfo {
                     name: agent_name.clone(),
                     display_name: display_name.clone(),
                     wire,
                     available: true,
+                    presentation: None,
+                    capabilities: None,
                 },
             )]
         } else {
@@ -1217,6 +1466,24 @@ impl MobileClient {
             is_local: false,
             tls: false,
         };
+        match self.alleycat_restart_targets.lock() {
+            Ok(mut guard) => {
+                guard.insert(
+                    server_id.clone(),
+                    AlleycatRestartTarget {
+                        params: params.clone(),
+                    },
+                );
+            }
+            Err(error) => {
+                error.into_inner().insert(
+                    server_id.clone(),
+                    AlleycatRestartTarget {
+                        params: params.clone(),
+                    },
+                );
+            }
+        }
         self.app_store
             .upsert_server(&config, ServerHealthSnapshot::Connecting, true);
         self.replace_existing_session(server_id.as_str()).await;
@@ -1264,7 +1531,7 @@ impl MobileClient {
                 .register_initial_session(Arc::clone(&alleycat_session))
                 .await;
             runtime_infos.push(AgentRuntimeInfo {
-                kind: runtime_kind,
+                kind: runtime_kind.clone(),
                 name: agent.name.clone(),
                 display_name: agent.display_name.clone(),
                 available: true,
@@ -1293,7 +1560,7 @@ impl MobileClient {
             server_id,
             runtime_resources
                 .iter()
-                .map(|r| r.runtime_kind)
+                .map(|r| r.runtime_kind.clone())
                 .collect::<Vec<_>>()
         );
         let session = match ServerSession::connect_remote_multiplexed(
@@ -1383,7 +1650,7 @@ impl MobileClient {
             server_id,
             runtime_resources
                 .iter()
-                .map(|resource| resource.runtime_kind)
+                .map(|resource| resource.runtime_kind.clone())
                 .collect::<Vec<_>>(),
             runtime_infos
         );
@@ -1615,7 +1882,7 @@ impl MobileClient {
         let trait_transport: Arc<dyn crate::session::remote_transport::RemoteTransport> =
             Arc::new(ssh_reconnect_transport);
         let resource = RuntimeRemoteSessionResource {
-            runtime_kind: crate::types::AgentRuntimeKind::Codex,
+            runtime_kind: "codex".to_string(),
             client: initial_client,
             transport: Some(trait_transport),
             keepalive: None,
@@ -1661,7 +1928,7 @@ impl MobileClient {
                 .unwrap_or("<none>")
         );
         let codex_runtime_info = AgentRuntimeInfo {
-            kind: crate::types::AgentRuntimeKind::Codex,
+            kind: "codex".to_string(),
             name: "codex".to_string(),
             display_name: "Codex".to_string(),
             available: true,
@@ -1743,6 +2010,14 @@ impl MobileClient {
     pub fn disconnect_server(&self, server_id: &str) {
         let session = self.sessions_write().remove(server_id);
         self.clear_direct_resume_markers_for_server(server_id);
+        match self.alleycat_restart_targets.lock() {
+            Ok(mut guard) => {
+                guard.remove(server_id);
+            }
+            Err(error) => {
+                error.into_inner().remove(server_id);
+            }
+        }
         self.app_store.remove_server(server_id);
 
         let inner = Arc::clone(&self.oauth_callback_tunnels);
@@ -1758,6 +2033,19 @@ impl MobileClient {
 
     pub async fn restart_app_server(&self, server_id: &str) -> Result<(), TransportError> {
         self.clear_oauth_callback_tunnel(server_id).await;
+        let alleycat_restart_target = match self.alleycat_restart_targets.lock() {
+            Ok(guard) => guard.get(server_id).cloned(),
+            Err(error) => error.into_inner().get(server_id).cloned(),
+        };
+        if let Some(target) = alleycat_restart_target {
+            let endpoint = self
+                .alleycat_endpoint()
+                .await
+                .map_err(|error| TransportError::ConnectionFailed(error.to_string()))?;
+            crate::alleycat::restart_agent(&endpoint, target.params, "codex".to_string())
+                .await
+                .map_err(|error| TransportError::ConnectionFailed(error.to_string()))?;
+        }
         let session = self.sessions_write().remove(server_id);
         self.clear_direct_resume_markers_for_server(server_id);
         self.app_store.remove_server(server_id);
@@ -2048,12 +2336,12 @@ impl MobileClient {
                 runtime_candidates.push(runtime_kind);
             }
         }
-        if !runtime_candidates.contains(&AgentRuntimeKind::Codex) {
-            runtime_candidates.push(AgentRuntimeKind::Codex);
+        if !runtime_candidates.contains(&"codex".to_string()) {
+            runtime_candidates.push("codex".to_string());
         }
 
         let mut lookup_errors = Vec::new();
-        for runtime_kind in runtime_candidates.iter().copied() {
+        for runtime_kind in runtime_candidates.iter().cloned() {
             let supports_pagination = self.app_store.server_supports_turn_pagination(server_id);
             // Paginated servers always exclude turns from the resume
             // response; we never want to pull the full embedded archive,
@@ -2068,14 +2356,25 @@ impl MobileClient {
             // way to learn turn status — so `exclude_turns=false` there.
             let exclude_turns = supports_pagination;
             match self
-                .resume_thread_for_runtime(server_id, thread_id, &key, runtime_kind, exclude_turns)
+                .resume_thread_for_runtime(
+                    server_id,
+                    thread_id,
+                    &key,
+                    runtime_kind.clone(),
+                    exclude_turns,
+                )
                 .await
             {
                 Ok(()) => {
-                    self.note_thread_runtime(key.clone(), runtime_kind);
+                    self.note_thread_runtime(key.clone(), runtime_kind.clone());
                     if force_authoritative && supports_pagination {
-                        self.reconcile_active_turn_via_turn_list_probe(server_id, thread_id, &key)
-                            .await;
+                        self.reconcile_active_turn_via_turn_list_probe(
+                            server_id,
+                            thread_id,
+                            &key,
+                            runtime_kind,
+                        )
+                        .await;
                     }
                     return Ok(());
                 }
@@ -2091,13 +2390,17 @@ impl MobileClient {
                         "external_resume_thread: resume failed, falling back to metadata-only thread/read runtime={:?} server={} thread={} error={}",
                         runtime_kind, server_id, thread_id, error
                     );
-                    self.read_thread_metadata_only_for_runtime(server_id, thread_id, runtime_kind)
-                        .await
-                        .map_err(|fallback_error| {
-                            RpcError::Deserialization(format!(
-                                "{error}; metadata fallback failed: {fallback_error}"
-                            ))
-                        })?;
+                    self.read_thread_metadata_only_for_runtime(
+                        server_id,
+                        thread_id,
+                        runtime_kind.clone(),
+                    )
+                    .await
+                    .map_err(|fallback_error| {
+                        RpcError::Deserialization(format!(
+                            "{error}; metadata fallback failed: {fallback_error}"
+                        ))
+                    })?;
                     self.note_thread_runtime(key.clone(), runtime_kind);
                     return Ok(());
                 }
@@ -2107,7 +2410,7 @@ impl MobileClient {
 
         for (runtime_kind, resume_error) in lookup_errors {
             match self
-                .read_thread_metadata_only_for_runtime(server_id, thread_id, runtime_kind)
+                .read_thread_metadata_only_for_runtime(server_id, thread_id, runtime_kind.clone())
                 .await
             {
                 Ok(()) => {
@@ -2164,7 +2467,7 @@ impl MobileClient {
         let response = self
             .request_typed_for_server_runtime::<upstream::ThreadResumeResponse>(
                 server_id,
-                runtime_kind,
+                runtime_kind.clone(),
                 resume_request,
             )
             .await?;
@@ -2195,7 +2498,7 @@ impl MobileClient {
         // full embedded turn history. Flip the capability flag so
         // future code paths (load_thread_turns_page) short-circuit
         // and the UI keeps relying on embedded turns.
-        if !server_honored_exclude_turns {
+        if exclude_turns && !server_honored_exclude_turns {
             self.app_store
                 .set_server_supports_turn_pagination(server_id, false);
         }
@@ -2210,7 +2513,7 @@ impl MobileClient {
             Some(response.approval_policy.into()),
             Some(response.sandbox.into()),
         )?;
-        snapshot.agent_runtime_kind = runtime_kind;
+        snapshot.agent_runtime_kind = runtime_kind.clone();
         // Preserve existing store items when the server returned empty turns
         // (paginated path); mark initial_turns_loaded so the UI spinner knows
         // to wait for load_thread_turns_page.
@@ -2246,6 +2549,7 @@ impl MobileClient {
         server_id: &str,
         thread_id: &str,
         key: &ThreadKey,
+        runtime_kind: AgentRuntimeKind,
     ) {
         const PROBE_LIMIT: u32 = 5;
         let request = upstream::ClientRequest::ThreadTurnsList {
@@ -2259,17 +2563,39 @@ impl MobileClient {
             },
         };
         let response = match self
-            .request_typed_for_server::<upstream::ThreadTurnsListResponse>(server_id, request)
+            .request_typed_for_server_runtime::<upstream::ThreadTurnsListResponse>(
+                server_id,
+                runtime_kind.clone(),
+                request,
+            )
             .await
         {
             Ok(response) => response,
             Err(error) => {
                 if is_method_not_found(&error) {
-                    // Server unexpectedly does not implement
-                    // `thread/turns/list` — flip the capability flag so
-                    // future calls don't re-attempt and skip reconcile.
-                    self.app_store
-                        .set_server_supports_turn_pagination(server_id, false);
+                    // Some non-Codex runtimes can resume a thread but do not
+                    // implement the lightweight turn-list probe. Fall back to
+                    // one embedded-turn resume so reconcile_active_turn can
+                    // still clear a stale active turn after mobile reconnects.
+                    if runtime_kind == "codex" {
+                        self.app_store
+                            .set_server_supports_turn_pagination(server_id, false);
+                    }
+                    if let Err(fallback_error) = self
+                        .resume_thread_for_runtime(
+                            server_id,
+                            thread_id,
+                            key,
+                            runtime_kind.clone(),
+                            false,
+                        )
+                        .await
+                    {
+                        warn!(
+                            "force_authoritative: embedded resume fallback failed server={} thread={} runtime={:?} error={}",
+                            server_id, thread_id, runtime_kind, fallback_error
+                        );
+                    }
                 } else {
                     warn!(
                         "force_authoritative: turn-list probe failed server={} thread={} error={}",
@@ -2312,11 +2638,11 @@ impl MobileClient {
         cursor: Option<String>,
         limit: Option<u32>,
     ) -> Result<crate::types::AppLoadThreadTurnsOutcome, RpcError> {
+        let key = ThreadKey {
+            server_id: server_id.to_string(),
+            thread_id: thread_id.to_string(),
+        };
         if !self.app_store.server_supports_turn_pagination(server_id) {
-            let key = ThreadKey {
-                server_id: server_id.to_string(),
-                thread_id: thread_id.to_string(),
-            };
             let needs_embedded_resume = self
                 .app_store
                 .thread_snapshot(&key)
@@ -2347,8 +2673,13 @@ impl MobileClient {
             request_id: upstream::RequestId::Integer(crate::next_request_id()),
             params,
         };
+        let runtime_kind = self.runtime_for_thread(&key);
         match self
-            .request_typed_for_server::<upstream::ThreadTurnsListResponse>(server_id, request)
+            .request_typed_for_server_runtime::<upstream::ThreadTurnsListResponse>(
+                server_id,
+                runtime_kind.clone(),
+                request,
+            )
             .await
         {
             Ok(response) => {
@@ -2367,13 +2698,10 @@ impl MobileClient {
                 })
             }
             Err(error) if is_method_not_found(&error) => {
-                self.app_store
-                    .set_server_supports_turn_pagination(server_id, false);
-                let key = ThreadKey {
-                    server_id: server_id.to_string(),
-                    thread_id: thread_id.to_string(),
-                };
-                let runtime_kind = self.runtime_for_thread(&key);
+                if runtime_kind == "codex".to_string() {
+                    self.app_store
+                        .set_server_supports_turn_pagination(server_id, false);
+                }
                 self.resume_thread_for_runtime(server_id, thread_id, &key, runtime_kind, false)
                     .await
                     .map_err(RpcError::Deserialization)?;
@@ -3154,9 +3482,45 @@ impl MobileClient {
         answers: Vec<PendingUserInputAnswer>,
     ) -> Result<(), RpcError> {
         let request = self.pending_user_input(request_id)?;
+        let seed = self
+            .app_store
+            .pending_user_input_seed(&request.server_id, &request.id);
         let normalized_answers = normalize_pending_user_input_answers(&request, &answers);
         let answered_inputs = normalized_answers.clone();
         let session = self.get_session(&request.server_id)?;
+        if let Some(seed) = seed.as_ref()
+            && matches!(
+                seed.response_kind,
+                PendingUserInputResponseKind::McpServerElicitation
+            )
+        {
+            let direct_command_id = self.app_store.begin_server_mutating_command(
+                &request.server_id,
+                ServerMutatingCommandKind::UserInputResponse,
+                &request.thread_id,
+                ServerMutatingCommandRoute::Direct,
+            );
+            let response_json = mcp_elicitation_response_json(seed, &answers)?;
+            let response_request_id = server_request_id_json(seed.request_id.clone());
+            session.respond(response_request_id, response_json).await?;
+            self.app_store.finish_server_mutating_command_success(
+                &request.server_id,
+                &direct_command_id,
+                ServerMutatingCommandRoute::Direct,
+            );
+            debug!(
+                "MobileClient: MCP elicitation response sent for server={} request_id={}",
+                request.server_id, request_id
+            );
+            self.app_store
+                .resolve_pending_user_input_with_response(request_id, answered_inputs);
+            self.spawn_post_user_input_reconcile(
+                request.server_id.clone(),
+                request.thread_id.clone(),
+                Arc::clone(&session),
+            );
+            return Ok(());
+        }
         if server_has_live_ipc(&self.app_store, &request.server_id, &session) {
             let request_server_id = request.server_id.clone();
             let submission_id = ipc_pending_user_input_submission_id(&request).to_string();
@@ -3249,7 +3613,17 @@ impl MobileClient {
         let response_json = serde_json::to_value(response).map_err(|e| {
             RpcError::Deserialization(format!("serialize user input response: {e}"))
         })?;
-        let response_request_id = server_request_id_json(fallback_server_request_id(&request.id));
+        let response_request_id = server_request_id_json(
+            seed.as_ref()
+                .filter(|seed| {
+                    matches!(
+                        seed.response_kind,
+                        PendingUserInputResponseKind::ToolRequestUserInput
+                    )
+                })
+                .map(|seed| seed.request_id.clone())
+                .unwrap_or_else(|| fallback_server_request_id(&request.id)),
+        );
         session.respond(response_request_id, response_json).await?;
         self.app_store.finish_server_mutating_command_success(
             &request.server_id,

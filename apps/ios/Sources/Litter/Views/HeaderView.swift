@@ -183,7 +183,7 @@ struct HeaderView: View {
                     runtime: appState.selectedAgentRuntimeKind
                 )
             }) {
-                return model.displayName
+                return modelPickerDisplayName(model)
             }
             return pendingModel
         }
@@ -210,6 +210,7 @@ struct HeaderView: View {
                 runtime: thread.agentRuntimeKind
             )
         }),
+           !model.supportedReasoningEfforts.isEmpty,
            !model.defaultReasoningEffort.wireValue.isEmpty {
             return model.defaultReasoningEffort.wireValue
         }
@@ -294,6 +295,7 @@ struct ConversationModelPickerPanel: View {
             collaborationMode: thread.collaborationMode,
             effectiveApprovalPolicy: thread.effectiveApprovalPolicy,
             effectiveSandboxPolicy: thread.effectiveSandboxPolicy,
+            isReasoningEffortLocked: thread.ampReasoningEffortLocked,
             showsBackground: false,
             onDismiss: {
                 appState.showModelSelector = false
@@ -472,6 +474,51 @@ func modelMatchesSelection(
     return model.id == trimmed || model.model == trimmed
 }
 
+private func defaultReasoningEffortSelection(for model: ModelInfo) -> String {
+    model.supportedReasoningEfforts.isEmpty ? "" : model.defaultReasoningEffort.wireValue
+}
+
+/// Allowlist of model "mode" names the runtime advertises (e.g. Amp's
+/// `smart` / `rush` / `deep`). Pulled from `capabilities.visible_modes`
+/// in the alleycat manifest so the rule is per-agent, not Amp-hardcoded.
+private func visibleModeNames(for kind: AgentRuntimeKind) -> Set<String>? {
+    kind.metadata?.capabilities?.visibleModes.map(Set.init)
+}
+
+/// Strip the optional agent-name prefix (`<kind>/` or `<kind>:`) the
+/// remote sometimes adds when reporting modes, so the bare mode name
+/// matches the allowlist.
+private func normalizedModeName(_ value: String, kind: AgentRuntimeKind) -> String {
+    var out = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let prefixes = ["\(kind)/", "\(kind):", "\(kind)\\"]
+    for prefix in prefixes where out.hasPrefix(prefix) {
+        out = String(out.dropFirst(prefix.count))
+    }
+    return out
+}
+
+private func modeName(for model: ModelInfo) -> String {
+    let kind = model.agentRuntimeKind
+    let idMode = normalizedModeName(model.id, kind: kind)
+    if !idMode.isEmpty { return idMode }
+    return normalizedModeName(model.model, kind: kind)
+}
+
+func modelPickerDisplayName(_ model: ModelInfo) -> String {
+    if visibleModeNames(for: model.agentRuntimeKind) != nil {
+        let mode = modeName(for: model)
+        if !mode.isEmpty { return mode }
+    }
+    return model.displayName.isEmpty ? model.id : model.displayName
+}
+
+private func isVisibleModelOption(_ model: ModelInfo) -> Bool {
+    guard let modes = visibleModeNames(for: model.agentRuntimeKind) else {
+        return true
+    }
+    return modes.contains(modeName(for: model))
+}
+
 struct InlineModelSelectorView: View {
     let models: [ModelInfo]
     @Binding var selectedModel: String
@@ -484,23 +531,47 @@ struct InlineModelSelectorView: View {
     var collaborationMode: AppModeKind = .default
     var effectiveApprovalPolicy: AppAskForApproval?
     var effectiveSandboxPolicy: AppSandboxPolicy?
+    var isReasoningEffortLocked = false
     var showsBackground = true
     @Environment(AppModel.self) private var appModel
     @Environment(AppState.self) private var appState
     @AppStorage("fastMode") private var fastMode = false
     @State private var modelSearchQuery = ""
     @State private var modelSearchIndex = ModelSearchIndex()
+    @State private var selectedRuntimeFilter: AgentRuntimeKind?
+    @State private var initializedRuntimeFilter = false
     var onDismiss: () -> Void
 
     private var activeModelSearchIndex: ModelSearchIndex {
-        if modelSearchIndex.isEmpty, !models.isEmpty {
-            return ModelSearchIndex(models: models)
+        if modelSearchIndex.isEmpty, !runtimeScopedModels.isEmpty {
+            return ModelSearchIndex(models: runtimeScopedModels)
         }
         return modelSearchIndex
     }
 
+    private var visibleModels: [ModelInfo] {
+        models.filter(isVisibleModelOption)
+    }
+
+    private var runtimeBuckets: [RuntimeModelBucket] {
+        runtimeModelBuckets(for: visibleModels)
+    }
+
+    private var activeRuntimeFilter: AgentRuntimeKind? {
+        guard let selectedRuntimeFilter,
+              runtimeBuckets.contains(where: { $0.kind == selectedRuntimeFilter }) else {
+            return nil
+        }
+        return selectedRuntimeFilter
+    }
+
+    private var runtimeScopedModels: [ModelInfo] {
+        guard let activeRuntimeFilter else { return visibleModels }
+        return visibleModels.filter { $0.agentRuntimeKind == activeRuntimeFilter }
+    }
+
     private var currentModel: ModelInfo? {
-        if let match = models.first(where: {
+        if let match = visibleModels.first(where: {
             modelMatchesSelection(
                 $0,
                 selectedModel,
@@ -512,7 +583,7 @@ struct InlineModelSelectorView: View {
         // When shown from the home composer, `selectedModel` may be empty
         // because the user hasn't picked yet. Fall back to the default
         // model so the reasoning effort row has something to render.
-        return models.first(where: { $0.isDefault }) ?? models.first
+        return visibleModels.first(where: { $0.isDefault }) ?? visibleModels.first
     }
 
     /// Effective collaboration mode: live thread value when we have one,
@@ -529,13 +600,19 @@ struct InlineModelSelectorView: View {
 
     var body: some View {
         let visibleModels = activeModelSearchIndex.results(matching: modelSearchQuery)
+        let selectedModelIsAmp: Bool = {
+            guard let model = currentModel else { return false }
+            return visibleModeNames(for: model.agentRuntimeKind) != nil
+        }()
+        let effectiveReasoningEfforts = isReasoningEffortLocked ? [] : (currentModel?.supportedReasoningEfforts ?? [])
 
         VStack(spacing: 0) {
             modelSearchField
+            runtimeFilterRow
 
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    if models.isEmpty {
+                    if self.visibleModels.isEmpty {
                         Text("Loading models...")
                             .litterFont(.caption)
                             .foregroundColor(LitterTheme.textSecondary)
@@ -556,7 +633,11 @@ struct InlineModelSelectorView: View {
                         Button {
                             selectedModel = model.id
                             selectedAgentRuntimeKind = model.agentRuntimeKind
-                            reasoningEffort = model.defaultReasoningEffort.wireValue
+                            if isReasoningEffortLocked && visibleModeNames(for: model.agentRuntimeKind) != nil {
+                                reasoningEffort = ""
+                            } else {
+                                reasoningEffort = defaultReasoningEffortSelection(for: model)
+                            }
                             // Auto-dismiss only in the thread-scoped popover
                             // context. In the home sheet (no thread yet) we
                             // let the user pick a model AND change plan or
@@ -568,7 +649,7 @@ struct InlineModelSelectorView: View {
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack(spacing: 6) {
-                                        Text(model.displayName)
+                                        Text(modelPickerDisplayName(model))
                                             .litterFont(.footnote)
                                             .foregroundColor(LitterTheme.textPrimary)
                                         if model.isDefault {
@@ -607,12 +688,21 @@ struct InlineModelSelectorView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            if let info = currentModel, !info.supportedReasoningEfforts.isEmpty {
+            if isReasoningEffortLocked && selectedModelIsAmp {
+                Divider().background(LitterTheme.separator).padding(.horizontal, 12)
+
+                Text("Reasoning effort is locked after the first message.")
+                    .litterFont(.caption2)
+                    .foregroundColor(LitterTheme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+            } else if !effectiveReasoningEfforts.isEmpty {
                 Divider().background(LitterTheme.separator).padding(.horizontal, 12)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
-                        ForEach(info.supportedReasoningEfforts) { effort in
+                        ForEach(effectiveReasoningEfforts) { effort in
                             Button {
                                 reasoningEffort = effort.reasoningEffort.wireValue
                                 onDismiss()
@@ -706,10 +796,18 @@ struct InlineModelSelectorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(showsBackground ? LitterTheme.surface : Color.clear)
         .onAppear {
-            modelSearchIndex = ModelSearchIndex(models: models)
+            synchronizeRuntimeFilter()
+            resetModelSearchIndex()
         }
         .onChange(of: models) { _, newModels in
-            modelSearchIndex = ModelSearchIndex(models: newModels)
+            synchronizeRuntimeFilter()
+            modelSearchIndex = ModelSearchIndex(models: newModels.filter(isVisibleModelOption).filtered(by: activeRuntimeFilter))
+        }
+        .onChange(of: selectedRuntimeFilter) { _, _ in
+            resetModelSearchIndex()
+        }
+        .onChange(of: selectedAgentRuntimeKind) { _, _ in
+            synchronizeRuntimeFilter()
         }
     }
 
@@ -734,6 +832,38 @@ struct InlineModelSelectorView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
     }
+
+    @ViewBuilder
+    private var runtimeFilterRow: some View {
+        if runtimeBuckets.count > 1 {
+            RuntimeFilterRow(
+                buckets: runtimeBuckets,
+                totalCount: visibleModels.count,
+                selectedRuntime: activeRuntimeFilter,
+                onSelect: { selectedRuntimeFilter = $0 }
+            )
+            .padding(.bottom, 6)
+        }
+    }
+
+    private func resetModelSearchIndex() {
+        modelSearchIndex = ModelSearchIndex(models: runtimeScopedModels)
+    }
+
+    private func synchronizeRuntimeFilter() {
+        if !initializedRuntimeFilter {
+            let initial = selectedAgentRuntimeKind ?? currentModel?.agentRuntimeKind
+            if let initial, runtimeBuckets.contains(where: { $0.kind == initial }) {
+                selectedRuntimeFilter = initial
+            }
+            initializedRuntimeFilter = true
+            return
+        }
+        if let selectedRuntimeFilter,
+           !runtimeBuckets.contains(where: { $0.kind == selectedRuntimeFilter }) {
+            self.selectedRuntimeFilter = nil
+        }
+    }
 }
 
 private struct InAppSafariView: UIViewControllerRepresentable {
@@ -753,12 +883,15 @@ struct ModelSelectorSheet: View {
     @Binding var selectedModel: String
     @Binding var selectedAgentRuntimeKind: AgentRuntimeKind?
     @Binding var reasoningEffort: String
+    var isReasoningEffortLocked = false
     @AppStorage("fastMode") private var fastMode = false
     @State private var modelSearchQuery = ""
     @State private var modelSearchIndex = ModelSearchIndex()
+    @State private var selectedRuntimeFilter: AgentRuntimeKind?
+    @State private var initializedRuntimeFilter = false
 
     private var currentModel: ModelInfo? {
-        models.first {
+        visibleModels.first {
             modelMatchesSelection(
                 $0,
                 selectedModel,
@@ -767,21 +900,48 @@ struct ModelSelectorSheet: View {
         }
     }
 
+    private var visibleModels: [ModelInfo] {
+        models.filter(isVisibleModelOption)
+    }
+
+    private var runtimeBuckets: [RuntimeModelBucket] {
+        runtimeModelBuckets(for: visibleModels)
+    }
+
+    private var activeRuntimeFilter: AgentRuntimeKind? {
+        guard let selectedRuntimeFilter,
+              runtimeBuckets.contains(where: { $0.kind == selectedRuntimeFilter }) else {
+            return nil
+        }
+        return selectedRuntimeFilter
+    }
+
+    private var runtimeScopedModels: [ModelInfo] {
+        guard let activeRuntimeFilter else { return visibleModels }
+        return visibleModels.filter { $0.agentRuntimeKind == activeRuntimeFilter }
+    }
+
     private var activeModelSearchIndex: ModelSearchIndex {
-        if modelSearchIndex.isEmpty, !models.isEmpty {
-            return ModelSearchIndex(models: models)
+        if modelSearchIndex.isEmpty, !runtimeScopedModels.isEmpty {
+            return ModelSearchIndex(models: runtimeScopedModels)
         }
         return modelSearchIndex
     }
 
     var body: some View {
         let visibleModels = activeModelSearchIndex.results(matching: modelSearchQuery)
+        let selectedModelIsAmp: Bool = {
+            guard let model = currentModel else { return false }
+            return visibleModeNames(for: model.agentRuntimeKind) != nil
+        }()
+        let effectiveReasoningEfforts = isReasoningEffortLocked ? [] : (currentModel?.supportedReasoningEfforts ?? [])
 
         ScrollView {
             LazyVStack(spacing: 0) {
                 modelSearchField
+                runtimeFilterRow
 
-                if models.isEmpty {
+                if self.visibleModels.isEmpty {
                     Text("Loading models...")
                         .litterFont(.caption)
                         .foregroundColor(LitterTheme.textSecondary)
@@ -801,14 +961,19 @@ struct ModelSelectorSheet: View {
                     Button {
                         selectedModel = model.id
                         selectedAgentRuntimeKind = model.agentRuntimeKind
-                        reasoningEffort = model.defaultReasoningEffort.wireValue
+                        let usesModes = visibleModeNames(for: model.agentRuntimeKind) != nil
+                        if isReasoningEffortLocked && usesModes {
+                            reasoningEffort = ""
+                        } else {
+                            reasoningEffort = defaultReasoningEffortSelection(for: model)
+                        }
                     } label: {
                         HStack {
                             ModelRuntimeIcon(kind: model.agentRuntimeKind)
 
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 6) {
-                                    Text(model.displayName)
+                                    Text(modelPickerDisplayName(model))
                                         .litterFont(.footnote)
                                         .foregroundColor(LitterTheme.textPrimary)
                                     if model.isDefault {
@@ -842,10 +1007,17 @@ struct ModelSelectorSheet: View {
                     Divider().background(LitterTheme.separator).padding(.leading, 20)
                 }
 
-                if let info = currentModel, !info.supportedReasoningEfforts.isEmpty {
+                if isReasoningEffortLocked && selectedModelIsAmp {
+                    Text("Reasoning effort is locked after the first message.")
+                        .litterFont(.caption2)
+                        .foregroundColor(LitterTheme.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                } else if !effectiveReasoningEfforts.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
-                            ForEach(info.supportedReasoningEfforts) { effort in
+                            ForEach(effectiveReasoningEfforts) { effort in
                                 Button {
                                     reasoningEffort = effort.reasoningEffort.wireValue
                                 } label: {
@@ -892,10 +1064,18 @@ struct ModelSelectorSheet: View {
         .padding(.top, 20)
         .background(.ultraThinMaterial)
         .onAppear {
-            modelSearchIndex = ModelSearchIndex(models: models)
+            synchronizeRuntimeFilter()
+            resetModelSearchIndex()
         }
         .onChange(of: models) { _, newModels in
-            modelSearchIndex = ModelSearchIndex(models: newModels)
+            synchronizeRuntimeFilter()
+            modelSearchIndex = ModelSearchIndex(models: newModels.filter(isVisibleModelOption).filtered(by: activeRuntimeFilter))
+        }
+        .onChange(of: selectedRuntimeFilter) { _, _ in
+            resetModelSearchIndex()
+        }
+        .onChange(of: selectedAgentRuntimeKind) { _, _ in
+            synchronizeRuntimeFilter()
         }
     }
 
@@ -919,6 +1099,117 @@ struct ModelSelectorSheet: View {
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 10)
+    }
+
+    @ViewBuilder
+    private var runtimeFilterRow: some View {
+        if runtimeBuckets.count > 1 {
+            RuntimeFilterRow(
+                buckets: runtimeBuckets,
+                totalCount: visibleModels.count,
+                selectedRuntime: activeRuntimeFilter,
+                onSelect: { selectedRuntimeFilter = $0 }
+            )
+            .padding(.bottom, 10)
+        }
+    }
+
+    private func resetModelSearchIndex() {
+        modelSearchIndex = ModelSearchIndex(models: runtimeScopedModels)
+    }
+
+    private func synchronizeRuntimeFilter() {
+        if !initializedRuntimeFilter {
+            let initial = selectedAgentRuntimeKind ?? currentModel?.agentRuntimeKind
+            if let initial, runtimeBuckets.contains(where: { $0.kind == initial }) {
+                selectedRuntimeFilter = initial
+            }
+            initializedRuntimeFilter = true
+            return
+        }
+        if let selectedRuntimeFilter,
+           !runtimeBuckets.contains(where: { $0.kind == selectedRuntimeFilter }) {
+            self.selectedRuntimeFilter = nil
+        }
+    }
+}
+
+private struct RuntimeModelBucket: Identifiable {
+    let kind: AgentRuntimeKind
+    let count: Int
+
+    var id: AgentRuntimeKind { kind }
+}
+
+private func runtimeModelBuckets(for models: [ModelInfo]) -> [RuntimeModelBucket] {
+    let grouped = Dictionary(grouping: models, by: \.agentRuntimeKind)
+    return AgentRuntimeKind.presentationOrder.compactMap { kind in
+        guard let models = grouped[kind], !models.isEmpty else { return nil }
+        return RuntimeModelBucket(kind: kind, count: models.count)
+    }
+}
+
+private extension [ModelInfo] {
+    func filtered(by runtime: AgentRuntimeKind?) -> [ModelInfo] {
+        guard let runtime else { return self }
+        return filter { $0.agentRuntimeKind == runtime }
+    }
+}
+
+private struct RuntimeFilterRow: View {
+    let buckets: [RuntimeModelBucket]
+    let totalCount: Int
+    let selectedRuntime: AgentRuntimeKind?
+    let onSelect: (AgentRuntimeKind?) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                RuntimeFilterPill(
+                    label: "All",
+                    count: totalCount,
+                    selected: selectedRuntime == nil,
+                    onTap: { onSelect(nil) }
+                )
+                ForEach(buckets) { bucket in
+                    RuntimeFilterPill(
+                        label: bucket.kind.titleDisplayLabel,
+                        count: bucket.count,
+                        kind: bucket.kind,
+                        selected: selectedRuntime == bucket.kind,
+                        onTap: { onSelect(bucket.kind) }
+                    )
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+}
+
+private struct RuntimeFilterPill: View {
+    let label: String
+    let count: Int
+    var kind: AgentRuntimeKind? = nil
+    let selected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 5) {
+                if let kind {
+                    AgentIconView(kind: kind, size: 12)
+                }
+                Text("\(label) \(count)")
+                    .lineLimit(1)
+            }
+            .litterFont(.caption2, weight: .medium)
+            .foregroundColor(selected ? LitterTheme.textOnAccent : LitterTheme.textPrimary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(selected ? LitterTheme.accent : LitterTheme.surfaceLight)
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -945,7 +1236,9 @@ private struct ModelSearchIndex {
                 searchableText: [
                     model.id,
                     model.model,
-                    model.displayName,
+                    model.agentRuntimeKind.displayLabel,
+                    model.agentRuntimeKind.titleDisplayLabel,
+                    modelPickerDisplayName(model),
                     model.description
                 ]
                 .joined(separator: "\n")
@@ -976,19 +1269,7 @@ private struct ModelRuntimeIcon: View {
     let kind: AgentRuntimeKind
 
     var body: some View {
-        Image(kind.assetName)
-            .resizable()
-            .scaledToFit()
-            .frame(width: 16, height: 16)
-            .padding(kind == .codex ? 0 : 2)
-            .background(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(kind == .codex ? Color.clear : Color.black.opacity(0.8))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .stroke(kind == .codex ? Color.clear : LitterTheme.textPrimary.opacity(0.3), lineWidth: 0.5)
-            )
+        AgentIconView(kind: kind, size: 20)
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             .accessibilityLabel(kind.displayLabel)
     }

@@ -558,7 +558,7 @@ fn app_thread_snapshot_from_state(
     Ok(AppThreadSnapshot {
         key: thread.key.clone(),
         info: thread.info.clone(),
-        agent_runtime_kind: thread.agent_runtime_kind,
+        agent_runtime_kind: thread.agent_runtime_kind.clone(),
         collaboration_mode: thread.collaboration_mode,
         model: thread.model.clone(),
         reasoning_effort: thread.reasoning_effort.clone(),
@@ -596,7 +596,7 @@ fn app_thread_state_record_from_state(
     Ok(AppThreadStateRecord {
         key: thread.key.clone(),
         info: thread.info.clone(),
-        agent_runtime_kind: thread.agent_runtime_kind,
+        agent_runtime_kind: thread.agent_runtime_kind.clone(),
         collaboration_mode: thread.collaboration_mode,
         model: thread.model.clone(),
         reasoning_effort: thread.reasoning_effort.clone(),
@@ -660,7 +660,7 @@ pub(crate) fn session_summaries_from_snapshot(snapshot: &AppSnapshot) -> Vec<App
 /// this row anyway, so every other field is trivially defaulted.
 pub(crate) fn empty_session_summary(key: ThreadKey) -> AppSessionSummary {
     AppSessionSummary {
-        agent_runtime_kind: crate::types::AgentRuntimeKind::Codex,
+        agent_runtime_kind: "codex".to_string(),
         server_display_name: key.server_id.clone(),
         server_host: key.server_id.clone(),
         key,
@@ -742,7 +742,7 @@ pub(crate) fn app_session_summary(
 
     AppSessionSummary {
         key: thread.key.clone(),
-        agent_runtime_kind: thread.agent_runtime_kind,
+        agent_runtime_kind: thread.agent_runtime_kind.clone(),
         server_display_name: server
             .map(|server| server.display_name.clone())
             .unwrap_or_else(|| thread.key.server_id.clone()),
@@ -1552,7 +1552,7 @@ mod tests {
                     status: ThreadSummaryStatus::Active,
                     updated_at: Some(10),
                 },
-                agent_runtime_kind: AgentRuntimeKind::Codex,
+                agent_runtime_kind: "codex".to_string(),
                 collaboration_mode: AppModeKind::Default,
                 model: None,
                 reasoning_effort: None,

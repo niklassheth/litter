@@ -975,11 +975,17 @@ struct DiscoveryView: View {
             )
             let availability = try await appModel.ssh.sshProbeRemoteAgents(sessionId: session.sessionId)
             let bridgeAgents = availability.filter {
+                // SSH bridge bootstrap can launch claude / pi / opencode
+                // on the remote; everything else (codex, amp, droid,
+                // hermes, anything new) only reaches the host via the
+                // alleycat pairing path.
+                guard $0.status == .available else { return false }
+                if let supports = $0.kind.metadata?.capabilities?.supportsSshBridge {
+                    return supports && $0.kind != "codex"
+                }
                 switch $0.kind {
-                case .claude, .pi, .opencode:
-                    return $0.status == .available
-                case .codex, .droid:
-                    return false
+                case "claude", "pi", "opencode": return true
+                default: return false
                 }
             }
             connectingServer = nil

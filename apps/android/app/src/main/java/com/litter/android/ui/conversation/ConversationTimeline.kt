@@ -495,10 +495,16 @@ private fun AssistantRenderBlocks(
         blocks.forEachIndexed { index, block ->
             when (block) {
                 is AppMessageRenderBlock.Markdown -> MarkdownText(text = block.markdown)
-                is AppMessageRenderBlock.CodeBlock -> CodeBlockSegment(
-                    language = block.language,
-                    code = block.code,
-                )
+                is AppMessageRenderBlock.CodeBlock -> {
+                    if (isMathLanguage(block.language)) {
+                        MarkdownText(text = mathMarkdownBlock(block.code))
+                    } else {
+                        CodeBlockSegment(
+                            language = block.language,
+                            code = block.code,
+                        )
+                    }
+                }
                 is AppMessageRenderBlock.InlineImage -> {
                     val bitmap = remember(block.data) {
                         BitmapFactory.decodeByteArray(block.data, 0, block.data.size)

@@ -112,7 +112,7 @@ import com.litter.android.ui.scaled
 import com.sigkitten.litter.android.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import uniffi.codex_mobile_client.AgentRuntimeKind
+import com.litter.android.ui.common.AgentRuntimeKind
 import uniffi.codex_mobile_client.AppProject
 import uniffi.codex_mobile_client.AppServerSnapshot
 import uniffi.codex_mobile_client.AppSessionSummary
@@ -1212,7 +1212,7 @@ private fun placeholderPinnedSession(
         serverId = pinned.serverId,
         threadId = pinned.threadId,
     ),
-    agentRuntimeKind = uniffi.codex_mobile_client.AgentRuntimeKind.CODEX,
+    agentRuntimeKind = "codex",
     serverDisplayName = server.displayName,
     serverHost = server.host,
     title = "Loading thread",

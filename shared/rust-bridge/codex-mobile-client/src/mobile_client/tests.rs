@@ -389,7 +389,7 @@ mod mobile_client_tests {
                 info.status = ThreadSummaryStatus::Active;
                 info
             },
-            agent_runtime_kind: AgentRuntimeKind::Codex,
+            agent_runtime_kind: "codex".to_string(),
             collaboration_mode: AppModeKind::Plan,
             model: Some("gpt-5".to_string()),
             reasoning_effort: Some("high".to_string()),
@@ -470,7 +470,7 @@ mod mobile_client_tests {
                 thread_id: "thread-1".to_string(),
             },
             info: make_thread_info("thread-1"),
-            agent_runtime_kind: AgentRuntimeKind::Codex,
+            agent_runtime_kind: "codex".to_string(),
             collaboration_mode: AppModeKind::Default,
             model: None,
             reasoning_effort: None,
@@ -513,13 +513,13 @@ mod mobile_client_tests {
             Some(vec![make_model_info(
                 "claude-sonnet-4.5",
                 "claude-sonnet-4.5",
-                AgentRuntimeKind::Claude,
+                "claude".to_string(),
             )]),
         );
 
         assert_eq!(
             client.runtime_for_thread_start("srv", None, Some("claude-sonnet-4.5")),
-            AgentRuntimeKind::Claude
+            "claude".to_string()
         );
     }
 
@@ -537,12 +537,12 @@ mod mobile_client_tests {
                 make_model_info(
                     "claude-sonnet-4.6",
                     "claude-sonnet-4.6",
-                    AgentRuntimeKind::Pi,
+                    "pi".to_string(),
                 ),
                 make_model_info(
                     "claude-sonnet-4.6",
                     "claude-sonnet-4.6",
-                    AgentRuntimeKind::Claude,
+                    "claude".to_string(),
                 ),
             ]),
         );
@@ -550,10 +550,10 @@ mod mobile_client_tests {
         assert_eq!(
             client.runtime_for_thread_start(
                 "srv",
-                Some(AgentRuntimeKind::Pi),
+                Some("pi".to_string()),
                 Some("claude-sonnet-4.6"),
             ),
-            AgentRuntimeKind::Pi
+            "pi".to_string()
         );
     }
 
@@ -570,12 +570,12 @@ mod mobile_client_tests {
             Some(vec![make_model_info(
                 "anthropic/claude-sonnet-4.6",
                 "claude-sonnet-4.6",
-                AgentRuntimeKind::Pi,
+                "pi".to_string(),
             )]),
         );
 
         let mut model = Some("claude-sonnet-4.6".to_string());
-        client.normalize_thread_model_for_runtime("srv", AgentRuntimeKind::Pi, &mut model);
+        client.normalize_thread_model_for_runtime("srv", "pi".to_string(), &mut model);
 
         assert_eq!(model.as_deref(), Some("anthropic/claude-sonnet-4.6"));
     }
@@ -593,17 +593,17 @@ mod mobile_client_tests {
             Some(vec![make_model_info(
                 "claude-sonnet-4.5",
                 "claude-sonnet-4.5",
-                AgentRuntimeKind::Claude,
+                "claude".to_string(),
             )]),
         );
 
         assert_eq!(
             client.runtime_for_thread_start(
                 "srv",
-                Some(AgentRuntimeKind::Opencode),
+                Some("opencode".to_string()),
                 Some("claude-sonnet-4.5"),
             ),
-            AgentRuntimeKind::Opencode
+            "opencode".to_string()
         );
     }
 
@@ -611,34 +611,53 @@ mod mobile_client_tests {
     fn alleycat_short_circuit_detects_missing_selected_runtime() {
         let requested = vec![
             (
-                AgentRuntimeKind::Codex,
+                "codex".to_string(),
                 AlleycatAgentInfo {
                     name: "codex".to_string(),
                     display_name: "Codex".to_string(),
                     wire: AlleycatAgentWire::Websocket,
                     available: true,
+                    presentation: None,
+                    capabilities: None,
                 },
             ),
             (
-                AgentRuntimeKind::Droid,
+                "droid".to_string(),
                 AlleycatAgentInfo {
                     name: "droid".to_string(),
                     display_name: "Droid".to_string(),
                     wire: AlleycatAgentWire::Jsonl,
                     available: true,
+                    presentation: None,
+                    capabilities: None,
+                },
+            ),
+            (
+                "amp".to_string(),
+                AlleycatAgentInfo {
+                    name: "amp".to_string(),
+                    display_name: "Amp".to_string(),
+                    wire: AlleycatAgentWire::Jsonl,
+                    available: true,
+                    presentation: None,
+                    capabilities: None,
                 },
             ),
         ];
         let requested_kinds = alleycat_requested_runtime_kinds(&requested);
 
-        assert_eq!(alleycat_runtime_agent_names(&requested), "codex,droid");
+        assert_eq!(alleycat_runtime_agent_names(&requested), "codex,droid,amp");
         assert_eq!(
-            missing_runtime_kinds(&[AgentRuntimeKind::Codex], &requested_kinds),
-            vec![AgentRuntimeKind::Droid]
+            missing_runtime_kinds(&["codex".to_string()], &requested_kinds),
+            vec!["amp".to_string(), "droid".to_string()]
         );
         assert!(
             missing_runtime_kinds(
-                &[AgentRuntimeKind::Codex, AgentRuntimeKind::Droid],
+                &[
+                    "codex".to_string(),
+                    "droid".to_string(),
+                    "amp".to_string()
+                ],
                 &requested_kinds
             )
             .is_empty()
@@ -658,9 +677,9 @@ mod mobile_client_tests {
         client
             .app_store
             .upsert_thread_snapshot(ThreadSnapshot::from_info(&key.server_id, info));
-        client.note_thread_runtime(key.clone(), AgentRuntimeKind::Codex);
+        client.note_thread_runtime(key.clone(), "codex".to_string());
 
-        assert_eq!(client.runtime_for_thread(&key), AgentRuntimeKind::Claude);
+        assert_eq!(client.runtime_for_thread(&key), "claude".to_string());
     }
 
     #[test]
@@ -676,18 +695,20 @@ mod mobile_client_tests {
             .app_store
             .upsert_thread_snapshot(ThreadSnapshot::from_info(&key.server_id, info));
 
-        assert_eq!(client.runtime_for_thread(&key), AgentRuntimeKind::Claude);
+        assert_eq!(client.runtime_for_thread(&key), "claude".to_string());
     }
 
     #[test]
     fn thread_runtime_infers_non_codex_from_existing_thread_model_provider() {
         for (provider, expected_runtime) in [
-            ("opencode", AgentRuntimeKind::Opencode),
-            ("open code", AgentRuntimeKind::Opencode),
-            ("pi", AgentRuntimeKind::Pi),
-            ("pi.dev", AgentRuntimeKind::Pi),
-            ("factory", AgentRuntimeKind::Droid),
-            ("factory droid", AgentRuntimeKind::Droid),
+            ("opencode", "opencode".to_string()),
+            ("open code", "opencode".to_string()),
+            ("amp", "amp".to_string()),
+            ("amp code", "amp".to_string()),
+            ("pi", "pi".to_string()),
+            ("pi.dev", "pi".to_string()),
+            ("factory", "droid".to_string()),
+            ("factory droid", "droid".to_string()),
         ] {
             let client = MobileClient::new();
             let key = ThreadKey {
@@ -699,7 +720,7 @@ mod mobile_client_tests {
             client
                 .app_store
                 .upsert_thread_snapshot(ThreadSnapshot::from_info(&key.server_id, info));
-            client.note_thread_runtime(key.clone(), AgentRuntimeKind::Codex);
+            client.note_thread_runtime(key.clone(), "codex".to_string());
 
             assert_eq!(client.runtime_for_thread(&key), expected_runtime);
         }
@@ -708,9 +729,10 @@ mod mobile_client_tests {
     #[test]
     fn thread_runtime_infers_non_codex_from_existing_thread_model_prefix() {
         for (model, expected_runtime) in [
-            ("opencode/qwen3-coder", AgentRuntimeKind::Opencode),
-            ("pi.dev/default", AgentRuntimeKind::Pi),
-            ("factory/droid", AgentRuntimeKind::Droid),
+            ("opencode/qwen3-coder", "opencode".to_string()),
+            ("amp/smart", "amp".to_string()),
+            ("pi.dev/default", "pi".to_string()),
+            ("factory/droid", "droid".to_string()),
         ] {
             let client = MobileClient::new();
             let key = ThreadKey {
@@ -723,7 +745,7 @@ mod mobile_client_tests {
             client
                 .app_store
                 .upsert_thread_snapshot(ThreadSnapshot::from_info(&key.server_id, info));
-            client.note_thread_runtime(key.clone(), AgentRuntimeKind::Codex);
+            client.note_thread_runtime(key.clone(), "codex".to_string());
 
             assert_eq!(client.runtime_for_thread(&key), expected_runtime);
         }
@@ -1031,8 +1053,8 @@ mod mobile_client_tests {
         let session = Arc::new(ServerSession::test_stub_with_runtime_handlers(
             config,
             vec![
-                (AgentRuntimeKind::Codex, codex_handler),
-                (AgentRuntimeKind::Claude, claude_handler),
+                ("codex".to_string(), codex_handler),
+                ("claude".to_string(), claude_handler),
             ],
         ));
         client
@@ -1068,8 +1090,8 @@ mod mobile_client_tests {
             .cloned()
             .expect("thread snapshot should exist after runtime fallback");
         assert!(snapshot.is_resumed);
-        assert_eq!(snapshot.agent_runtime_kind, AgentRuntimeKind::Claude);
-        assert_eq!(client.runtime_for_thread(&key), AgentRuntimeKind::Claude);
+        assert_eq!(snapshot.agent_runtime_kind, "claude".to_string());
+        assert_eq!(client.runtime_for_thread(&key), "claude".to_string());
     }
 
     #[tokio::test]
@@ -1317,6 +1339,135 @@ mod mobile_client_tests {
         assert_eq!(snapshot.items.len(), 1);
         assert!(snapshot.initial_turns_loaded);
         assert!(!client.app_store.server_supports_turn_pagination(server_id));
+    }
+
+    #[tokio::test]
+    async fn force_refresh_thread_authoritative_falls_back_to_embedded_resume_for_amp_probe_miss() {
+        let client = MobileClient::new();
+        let server_id = "srv";
+        let thread_id = "thread-amp";
+        let key = ThreadKey {
+            server_id: server_id.to_string(),
+            thread_id: thread_id.to_string(),
+        };
+        let config = make_server_config(server_id);
+        client
+            .app_store
+            .upsert_server(&config, ServerHealthSnapshot::Connected, true);
+
+        let mut thread = thread_snapshot_with_active_turn(server_id, thread_id, "turn-active");
+        thread.agent_runtime_kind = "amp".to_string();
+        thread.model = Some("amp/smart".to_string());
+        thread.info.model_provider = Some("amp".to_string());
+        client.app_store.upsert_thread_snapshot(thread);
+        client.note_thread_runtime(key.clone(), "amp".to_string());
+
+        let requests = Arc::new(StdMutex::new(Vec::<String>::new()));
+        let amp_handler: TestRequestHandler = {
+            let requests = Arc::clone(&requests);
+            Arc::new(move |request| match request {
+                upstream::ClientRequest::ThreadResume { params, .. } => {
+                    requests
+                        .lock()
+                        .expect("request log lock should not be poisoned")
+                        .push(format!("amp:thread/resume:{}", params.exclude_turns));
+                    let turns = if params.exclude_turns {
+                        json!([])
+                    } else {
+                        json!([{
+                            "id": "turn-active",
+                            "items": [],
+                            "itemsView": "full",
+                            "status": "completed",
+                            "error": null,
+                            "startedAt": null,
+                            "completedAt": 2,
+                            "durationMs": 1
+                        }])
+                    };
+                    serde_json::to_value(json!({
+                        "thread": {
+                            "id": thread_id,
+                            "preview": "Amp reasoning",
+                            "ephemeral": false,
+                            "modelProvider": "amp",
+                            "createdAt": 1,
+                            "updatedAt": 2,
+                            "status": { "type": "idle" },
+                            "path": "/tmp/thread",
+                            "cwd": "/tmp/thread",
+                            "cliVersion": "1.0.0",
+                            "source": "cli",
+                            "agentNickname": null,
+                            "agentRole": null,
+                            "gitInfo": null,
+                            "name": "thread",
+                            "turns": turns
+                        },
+                        "model": "amp/smart",
+                        "modelProvider": "amp",
+                        "cwd": "/tmp/thread",
+                        "approvalPolicy": "never",
+                        "approvalsReviewer": "user",
+                        "sandbox": { "type": "dangerFullAccess" },
+                        "reasoningEffort": null
+                    }))
+                    .map_err(|error| RpcError::Deserialization(error.to_string()))
+                }
+                upstream::ClientRequest::ThreadTurnsList { .. } => {
+                    requests
+                        .lock()
+                        .expect("request log lock should not be poisoned")
+                        .push("amp:thread/turns/list".to_string());
+                    Err(RpcError::Deserialization(
+                        "server error -32601: method `thread/turns/list` is not implemented"
+                            .to_string(),
+                    ))
+                }
+                other => Err(RpcError::Deserialization(format!(
+                    "unexpected request in test: {}",
+                    other.method()
+                ))),
+            })
+        };
+        let session = Arc::new(ServerSession::test_stub_with_runtime_handlers(
+            config,
+            vec![("amp".to_string(), amp_handler)],
+        ));
+        client
+            .sessions
+            .write()
+            .expect("sessions lock should not be poisoned")
+            .insert(server_id.to_string(), session);
+
+        client
+            .force_refresh_thread_authoritative(server_id, thread_id)
+            .await
+            .expect("force refresh should fall back through embedded resume");
+
+        let requests = requests
+            .lock()
+            .expect("request log lock should not be poisoned");
+        assert_eq!(
+            requests.as_slice(),
+            [
+                "amp:thread/resume:true",
+                "amp:thread/turns/list",
+                "amp:thread/resume:false"
+            ]
+        );
+        drop(requests);
+
+        let snapshot = client
+            .app_store
+            .snapshot()
+            .threads
+            .get(&key)
+            .cloned()
+            .expect("thread snapshot after force refresh");
+        assert_eq!(snapshot.active_turn_id, None);
+        assert_eq!(snapshot.info.status, ThreadSummaryStatus::Idle);
+        assert!(client.app_store.server_supports_turn_pagination(server_id));
     }
 
     #[tokio::test]

@@ -114,6 +114,7 @@ private data class SplashProvider(
 private val SplashProviders = listOf(
     SplashProvider("codex", R.drawable.agent_codex),
     SplashProvider("opencode", R.drawable.agent_opencode),
+    SplashProvider("amp", R.drawable.agent_amp),
     SplashProvider("pi", R.drawable.agent_pi),
     SplashProvider("claude", R.drawable.agent_claude),
     SplashProvider("droid", R.drawable.agent_droid),

@@ -179,7 +179,8 @@ struct ConversationComposerModalCoordinator<Content: View>: View {
                     models: snapshot.availableModels,
                     selectedModel: selectedModelBinding,
                     selectedAgentRuntimeKind: selectedAgentRuntimeKindBinding,
-                    reasoningEffort: reasoningEffortBinding
+                    reasoningEffort: reasoningEffortBinding,
+                    isReasoningEffortLocked: currentThread?.ampReasoningEffortLocked == true
                 )
                 .presentationDetents([.medium, .large], selection: $modelSelectorDetent)
                 .presentationDragIndicator(.visible)

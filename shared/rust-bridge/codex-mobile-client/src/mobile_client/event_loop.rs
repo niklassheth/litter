@@ -81,7 +81,7 @@ impl MobileClient {
                         note_notification_runtime(
                             &app_store,
                             &server_id,
-                            runtime_kind,
+                            runtime_kind.clone(),
                             &notification,
                         );
                         if let upstream::ServerNotification::AccountLoginCompleted(payload) =
@@ -613,7 +613,7 @@ impl MobileClient {
         R: serde::de::DeserializeOwned,
     {
         let mut request = request;
-        self.normalize_model_selection_for_request(server_id, runtime_kind, &mut request);
+        self.normalize_model_selection_for_request(server_id, runtime_kind.clone(), &mut request);
         self.recorder.record_request(server_id, &request);
         let wire_method = client_request_wire_method(&request);
         let started_at = Instant::now();
@@ -623,7 +623,7 @@ impl MobileClient {
             server_id, runtime_kind, wire_method
         );
         let value = session
-            .request_client_for_runtime(runtime_kind, request)
+            .request_client_for_runtime(runtime_kind.clone(), request)
             .await
             .map_err(|error| {
                 self.reconcile_transport_error(server_id, &error);
@@ -701,7 +701,7 @@ impl MobileClient {
                     thread_id: thread_id.to_string(),
                 })
             })
-            .unwrap_or(AgentRuntimeKind::Codex)
+            .unwrap_or("codex".to_string())
     }
 
     pub(super) fn pending_approval(&self, request_id: &str) -> Result<PendingApproval, RpcError> {
@@ -1749,10 +1749,10 @@ fn apply_bridge_event(app_store: &AppStoreReducer, server_id: &str, event: Bridg
                 delta: n.delta,
             }
         }
-        ServerNotification::ThreadStatusChanged(_) => {
-            // Thread status is handled by TurnStarted/TurnCompleted
-            return;
-        }
+        ServerNotification::ThreadStatusChanged(n) => UiEvent::ThreadStatusChanged {
+            key,
+            notification: n,
+        },
         ServerNotification::ServerRequestResolved(_) => {
             // Handled via sync_ipc_thread_requests_from_projection
             return;

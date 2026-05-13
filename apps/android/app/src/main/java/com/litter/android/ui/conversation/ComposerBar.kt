@@ -89,6 +89,7 @@ import com.litter.android.state.AppModel
 import com.litter.android.state.ComposerImageAttachment
 import com.litter.android.state.AppComposerPayload
 import com.litter.android.state.VoiceTranscriptionManager
+import com.litter.android.state.ampReasoningEffortLocked
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import uniffi.codex_mobile_client.AuthStatusRequest
@@ -386,8 +387,13 @@ fun ComposerBar(
         if (!handledAsSlash && (text.isNotBlank() || attachedImage != null)) {
             val launchState = appModel.launchState.snapshot.value
             val pendingModel = launchState.selectedModel.trim().ifEmpty { null }
-            val effort = launchState.reasoningEffort.trim().ifEmpty { null }
-                ?.let(::reasoningEffortFromServerValue)
+            val thread = appModel.snapshot.value?.threads?.find { it.key == threadKey }
+            val effort = if (thread?.ampReasoningEffortLocked == true) {
+                null
+            } else {
+                launchState.reasoningEffort.trim().ifEmpty { null }
+                    ?.let(::reasoningEffortFromServerValue)
+            }
             val tier = if (HeaderOverrides.pendingFastMode) ServiceTier.FAST else null
             val attachmentToSend = attachedImage
             val payload = AppComposerPayload(
@@ -1275,6 +1281,7 @@ private fun reasoningEffortFromServerValue(value: String): ReasoningEffort? =
         "medium" -> ReasoningEffort.MEDIUM
         "high" -> ReasoningEffort.HIGH
         "xhigh" -> ReasoningEffort.X_HIGH
+        "max" -> ReasoningEffort.MAX
         else -> null
     }
 

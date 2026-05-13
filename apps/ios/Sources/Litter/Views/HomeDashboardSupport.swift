@@ -287,7 +287,16 @@ enum HomeDashboardSupport {
         if saved.alleycatAgentWire == "ssh-bridge" || saved.alleycatNodeId != nil {
             kinds = parseRuntimeKinds(saved.alleycatAgentName)
         } else {
-            kinds = [.codex]
+            // Direct Codex connections have a single known runtime —
+            // the codex app-server itself. Use the cached metadata id
+            // when present so the entry survives if codex is renamed
+            // server-side; fall back to the literal "codex" id
+            // otherwise (cold start before first probe).
+            let fallback = AgentRuntimeMetadataProvider.all?()
+                .first(where: { $0.capabilities?.usesDirectCodexPort == true })?
+                .name
+                ?? "codex"
+            kinds = [fallback]
         }
         return kinds.map { kind in
             AgentRuntimeInfo(
@@ -303,22 +312,18 @@ enum HomeDashboardSupport {
         let parsed = (raw ?? "")
             .split(separator: ",")
             .compactMap { token -> AgentRuntimeKind? in
-                switch token.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-                case "codex":
-                    return .codex
-                case "claude":
-                    return .claude
-                case "pi":
-                    return .pi
-                case "opencode":
-                    return .opencode
-                case "droid", "factory", "factory-droid", "factory_droid", "factory droid":
-                    return .droid
-                default:
-                    return nil
+                let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if trimmed.isEmpty { return nil }
+                switch trimmed {
+                case "pi.dev", "pidev": return "pi"
+                case "ampcode", "amp-code", "amp_code", "amp code": return "amp"
+                case "open-code", "open_code", "open code": return "opencode"
+                case "claude-code", "claude_code", "claude code": return "claude"
+                case "factory", "factory-droid", "factory_droid", "factory droid": return "droid"
+                default: return trimmed
                 }
             }
-        return parsed.isEmpty ? [.codex] : parsed
+        return parsed.isEmpty ? ["codex"] : parsed
     }
 
     static func serverSubtitle(for server: HomeDashboardServer) -> String {

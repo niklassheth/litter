@@ -291,6 +291,7 @@ final class HomeDashboardSupportTests: XCTestCase {
                 agentNickname: nil,
                 agentRole: nil,
                 parentThreadId: nil,
+                forkedFromId: nil,
                 agentStatus: nil,
                 createdAt: nil,
                 updatedAt: Int64(updatedAt)
@@ -337,6 +338,7 @@ final class HomeDashboardSupportTests: XCTestCase {
                 model: thread.model ?? "",
                 modelProvider: thread.info.modelProvider ?? "",
                 parentThreadId: thread.info.parentThreadId,
+                forkedFromId: nil,
                 agentNickname: thread.info.agentNickname,
                 agentRole: thread.info.agentRole,
                 agentDisplayLabel: AgentLabelFormatter.format(
@@ -358,7 +360,8 @@ final class HomeDashboardSupportTests: XCTestCase {
                 lastTurnStartMs: nil,
                 lastTurnEndMs: nil,
                 stats: nil,
-                tokenUsage: nil
+                tokenUsage: nil,
+                goal: nil
             )
         }
 

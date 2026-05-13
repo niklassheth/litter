@@ -143,10 +143,7 @@ struct ThreadSearchResultsView: View {
         } label: {
             HStack(spacing: 6) {
                 if let kind {
-                    Image(kind.assetName)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 12, height: 12)
+                    AgentIconView(kind: kind, size: 12)
                 } else {
                     Image(systemName: "square.grid.2x2")
                         .litterFont(size: 10, weight: .semibold)
@@ -218,10 +215,7 @@ private struct ThreadSearchRuntimeIcon: View {
     let kind: AgentRuntimeKind
 
     var body: some View {
-        Image(kind.assetName)
-            .resizable()
-            .scaledToFit()
-            .frame(width: 16, height: 16)
+        AgentIconView(kind: kind, size: 16)
             .accessibilityLabel(kind.displayLabel)
     }
 }

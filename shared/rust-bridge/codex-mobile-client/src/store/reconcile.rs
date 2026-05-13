@@ -171,7 +171,7 @@ impl MobileClient {
         server_id: &str,
         threads: &[upstream::Thread],
     ) -> Vec<ThreadInfo> {
-        self.upsert_thread_list_page_for_runtime(server_id, AgentRuntimeKind::Codex, threads)
+        self.upsert_thread_list_page_for_runtime(server_id, "codex".to_string(), threads)
     }
 
     pub fn upsert_thread_list_page_for_runtime(

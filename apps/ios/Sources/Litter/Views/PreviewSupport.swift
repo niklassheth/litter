@@ -60,7 +60,7 @@ enum LitterPreviewData {
             inputModalities: [.text, .image],
             supportsPersonality: true,
             isDefault: true,
-            agentRuntimeKind: .codex
+            agentRuntimeKind: "codex"
         ),
         ModelInfo(
             id: "gpt-5.4-mini",
@@ -77,7 +77,7 @@ enum LitterPreviewData {
             inputModalities: [.text],
             supportsPersonality: true,
             isDefault: false,
-            agentRuntimeKind: .codex
+            agentRuntimeKind: "codex"
         )
     ]
 
@@ -323,7 +323,7 @@ enum LitterPreviewData {
                 createdAt: nil,
                 updatedAt: Int64(updatedAt.timeIntervalSince1970)
             ),
-            agentRuntimeKind: .codex,
+            agentRuntimeKind: "codex",
             collaborationMode: .`default`,
             model: model,
             reasoningEffort: reasoningEffort,
@@ -376,7 +376,7 @@ enum LitterPreviewData {
             requiresOpenaiAuth: false,
             rateLimits: nil,
             availableModels: sampleModels,
-            agentRuntimes: [AgentRuntimeInfo(kind: .codex, name: "codex", displayName: "Codex", available: true)],
+            agentRuntimes: [AgentRuntimeInfo(kind: "codex", name: "codex", displayName: "Codex", available: true)],
             connectionProgress: nil,
             usageStats: nil,
             codexVersion: "0.125.0"

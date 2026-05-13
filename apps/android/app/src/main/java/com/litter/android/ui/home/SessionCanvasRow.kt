@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import uniffi.codex_mobile_client.ThreadKey
 import com.litter.android.state.displayTitle
 import com.litter.android.ui.LitterTheme
+import com.litter.android.ui.WallpaperBackdrop
 import com.litter.android.ui.common.FormattedText
 import com.litter.android.ui.common.StatusDot
 import com.litter.android.ui.common.StatusDotState
@@ -125,6 +126,12 @@ fun SessionCanvasRow(
     }
 
     Box(modifier = modifier) {
+        if (zoomLevel >= 4) {
+            WallpaperBackdrop(
+                threadKey = session.key,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()

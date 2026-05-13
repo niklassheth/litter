@@ -414,51 +414,30 @@ struct ContentView: View {
             ZStack {
                 LitterTheme.backgroundGradient.ignoresSafeArea()
 
-                HomeNavigationView(
+                #if DEBUG
+                if ConversationDisplayUITestHarnessView.isEnabled {
+                    ConversationDisplayUITestHarnessView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    standardHomeNavigationView(
+                        topInset: geometry.safeAreaInsets.top,
+                        bottomInset: composerBottomInset
+                    )
+                }
+                #else
+                standardHomeNavigationView(
                     topInset: geometry.safeAreaInsets.top,
                     bottomInset: composerBottomInset
                 )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .ignoresSafeArea(.container, edges: [.top, .bottom])
-                .id(themeManager.themeVersion)
-                .onAppear {
-                    if !splashDismissed {
-                        splashDismissed = true
-                        (UIApplication.shared.delegate as? AppDelegate)?.signalContentReady()
-                    }
-                }
+                #endif
 
-                if petOverlay.visible, let pet = petOverlay.selectedPet {
-                    PetOverlayView(
-                        pet: pet,
-                        state: petOverlay.avatarState(snapshot: appModel.snapshot),
-                        message: petOverlay.avatarMessage(snapshot: appModel.snapshot),
-                        reduceMotion: UIAccessibility.isReduceMotionEnabled
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                #if DEBUG
+                if !ConversationDisplayUITestHarnessView.isEnabled {
+                    standardOverlays
                 }
-
-                if let approval = appModel.snapshot?.pendingApprovals.first(where: {
-                    $0.kind != .mcpElicitation
-                }) {
-                    ApprovalPromptView(approval: approval) { decision in
-                        Task {
-                            try? await appModel.store.respondToApproval(
-                                requestId: approval.id,
-                                decision: decision
-                            )
-                        }
-                    } onViewThread: { threadKey in
-                        appState.pendingThreadNavigation = threadKey
-                    }
-                }
-
-                if let warmupID = conversationWarmup.activeWarmupID {
-                    ConversationWarmupView(warmupID: warmupID) {
-                        conversationWarmup.finishWarmup()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                }
+                #else
+                standardOverlays
+                #endif
 
             }
             .ignoresSafeArea(.container)
@@ -551,6 +530,57 @@ struct ContentView: View {
             appState.showSettings = true
         }
         #endif
+    }
+
+    private func standardHomeNavigationView(topInset: CGFloat, bottomInset: CGFloat) -> some View {
+        HomeNavigationView(
+            topInset: topInset,
+            bottomInset: bottomInset
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea(.container, edges: [.top, .bottom])
+        .id(themeManager.themeVersion)
+        .onAppear {
+            if !splashDismissed {
+                splashDismissed = true
+                (UIApplication.shared.delegate as? AppDelegate)?.signalContentReady()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var standardOverlays: some View {
+        if petOverlay.visible, let pet = petOverlay.selectedPet {
+            PetOverlayView(
+                pet: pet,
+                state: petOverlay.avatarState(snapshot: appModel.snapshot),
+                message: petOverlay.avatarMessage(snapshot: appModel.snapshot),
+                reduceMotion: UIAccessibility.isReduceMotionEnabled
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+
+        if let approval = appModel.snapshot?.pendingApprovals.first(where: {
+            $0.kind != .mcpElicitation
+        }) {
+            ApprovalPromptView(approval: approval) { decision in
+                Task {
+                    try? await appModel.store.respondToApproval(
+                        requestId: approval.id,
+                        decision: decision
+                    )
+                }
+            } onViewThread: { threadKey in
+                appState.pendingThreadNavigation = threadKey
+            }
+        }
+
+        if let warmupID = conversationWarmup.activeWarmupID {
+            ConversationWarmupView(warmupID: warmupID) {
+                conversationWarmup.finishWarmup()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
     }
 }
 
@@ -1852,7 +1882,7 @@ private struct ConversationDestinationScreen: View {
         guard let snapshot = appModel.snapshot else { return [] }
         let key = resolvedThreadKey
         return snapshot.pendingUserInputs.filter {
-            $0.serverId == key.serverId && $0.threadId == key.threadId
+            $0.isRelevant(to: key)
         }
     }
 

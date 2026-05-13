@@ -79,6 +79,9 @@ struct ConversationView: View {
     }
 
     private var pendingReasoningOverride: String? {
+        if thread.ampReasoningEffortLocked {
+            return nil
+        }
         let trimmed = appState.reasoningEffort.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
@@ -2615,6 +2618,8 @@ private func collaborationModeEffortLabel(_ effort: ReasoningEffort) -> String {
         return "High"
     case .xHigh:
         return "XHigh"
+    case .max:
+        return "Max"
     }
 }
 

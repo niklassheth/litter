@@ -47,11 +47,11 @@ import androidx.compose.ui.unit.sp
 import com.litter.android.state.displayTitle
 import com.litter.android.ui.LitterTextStyle
 import com.litter.android.ui.LitterTheme
-import com.litter.android.ui.common.runtimeDrawable
+import com.litter.android.ui.common.AgentIconView
 import com.litter.android.ui.common.runtimeLabel
 import com.litter.android.ui.common.runtimeSortIndex
 import com.litter.android.ui.scaled
-import uniffi.codex_mobile_client.AgentRuntimeKind
+import com.litter.android.ui.common.AgentRuntimeKind
 import uniffi.codex_mobile_client.AppSessionSummary
 import uniffi.codex_mobile_client.PinnedThreadKey
 
@@ -234,11 +234,7 @@ private fun RuntimeFilterPill(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (kind != null) {
-            Image(
-                painter = painterResource(id = kind.runtimeDrawable),
-                contentDescription = null,
-                modifier = Modifier.size(12.dp),
-            )
+            AgentIconView(kind = kind, sizeDp = 12)
         }
         Text(
             text = label,
@@ -323,11 +319,7 @@ private fun ThreadSearchRow(
 
 @Composable
 private fun ThreadSearchRuntimeIcon(kind: AgentRuntimeKind) {
-    Image(
-        painter = painterResource(id = kind.runtimeDrawable),
-        contentDescription = HomeDashboardSupport.runtimeLabel(kind),
-        modifier = Modifier.size(16.dp),
-    )
+    AgentIconView(kind = kind, sizeDp = 16)
 }
 
 /**

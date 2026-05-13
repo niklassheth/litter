@@ -141,6 +141,8 @@ if [ -z "${RUSTC_WRAPPER:-}" ] && command -v sccache >/dev/null 2>&1; then
   export RUSTC_WRAPPER="$(command -v sccache)"
 fi
 
+"$REPO_DIR/tools/scripts/update-alleycat-main.sh" --shared
+
 ensure_host_llvm_on_path() {
   local candidate
   local llvm_candidates=(

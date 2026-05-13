@@ -11,7 +11,7 @@ import com.litter.android.ui.LitterThemeManager
 import com.litter.android.ui.common.runtimeLabel
 import com.litter.android.ui.scaled
 import uniffi.codex_mobile_client.Account
-import uniffi.codex_mobile_client.AgentRuntimeKind
+import com.litter.android.ui.common.AgentRuntimeKind
 import uniffi.codex_mobile_client.AppServerHealth
 import uniffi.codex_mobile_client.AppServerSnapshot
 import uniffi.codex_mobile_client.AppSessionSummary

@@ -32,6 +32,7 @@ use crate::types::AgentRuntimeKind;
 const REMOTE_RECONNECT_MAX_ATTEMPTS: u32 = 5;
 const REMOTE_RECONNECT_DELAY: Duration = Duration::from_secs(1);
 const APP_SERVER_PROXY_WEBSOCKET_URL: &str = "ws://codex-app-server-proxy.localhost/";
+const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 
 #[derive(Clone)]
 pub(crate) struct SshReconnectTransport {
@@ -50,6 +51,13 @@ fn append_android_debug_log(line: &str) {
         line.to_string(),
         None,
     );
+}
+
+fn openai_base_url_from_env() -> Option<String> {
+    std::env::var(OPENAI_BASE_URL_ENV_KEY)
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
 }
 
 // ---------------------------------------------------------------------------
@@ -559,7 +567,7 @@ impl ServerSession {
             }
         }
 
-        let cli_overrides = vec![
+        let mut cli_overrides = vec![
             ("features.goals".to_string(), true.into()),
             ("features.realtime_conversation".to_string(), true.into()),
             (
@@ -572,6 +580,9 @@ impl ServerSession {
                 "conversational".to_string().into(),
             ),
         ];
+        if let Some(base_url) = openai_base_url_from_env() {
+            cli_overrides.push(("openai_base_url".to_string(), base_url.into()));
+        }
 
         let mut base_builder = ConfigBuilder::default().cli_overrides(cli_overrides.clone());
         if let Some(ref codex_home) = in_process.codex_home {
@@ -751,7 +762,7 @@ impl ServerSession {
         let (_, args) = remote_connect_args(&config);
         let client = connect_remote_client(&args).await?;
         let resource = RuntimeRemoteSessionResource {
-            runtime_kind: AgentRuntimeKind::Codex,
+            runtime_kind: "codex".to_string(),
             client,
             transport: None,
             keepalive: None,
@@ -767,11 +778,11 @@ impl ServerSession {
     ) -> Result<Self, TransportError> {
         let requested_runtime_kinds = resources
             .iter()
-            .map(|resource| resource.runtime_kind)
+            .map(|resource| resource.runtime_kind.clone())
             .collect::<Vec<_>>();
         let first_runtime_kind = resources
             .first()
-            .map(|resource| resource.runtime_kind)
+            .map(|resource| resource.runtime_kind.clone())
             .ok_or_else(|| {
                 TransportError::ConnectionFailed("no runtime streams available".to_string())
             })?;
@@ -795,12 +806,13 @@ impl ServerSession {
             if primary_tx.is_none() || resource.runtime_kind == first_runtime_kind {
                 primary_tx = Some(command_tx.clone());
             }
+            let runtime_kind = resource.runtime_kind.clone();
             runtime_command_txs.insert(resource.runtime_kind, command_tx);
             if let Some(transport) = resource.transport.as_ref() {
                 runtime_transports.push(Arc::clone(transport));
             }
             worker_handles.push(spawn_remote_runtime_worker(
-                resource.runtime_kind,
+                runtime_kind,
                 resource.client,
                 resource.keepalive,
                 command_rx,
@@ -885,16 +897,16 @@ impl ServerSession {
 
     pub fn runtime_kinds(&self) -> Vec<AgentRuntimeKind> {
         if self.runtime_command_txs.is_empty() {
-            return vec![AgentRuntimeKind::Codex];
+            return vec!["codex".to_string()];
         }
-        let mut kinds = self.runtime_command_txs.keys().copied().collect::<Vec<_>>();
+        let mut kinds = self.runtime_command_txs.keys().cloned().collect::<Vec<_>>();
         kinds.sort();
         kinds
     }
 
     /// Send a typed `ClientRequest` and await the raw JSON response.
     pub async fn request_client(&self, request: ClientRequest) -> Result<JsonValue, RpcError> {
-        self.request_client_for_runtime(AgentRuntimeKind::Codex, request)
+        self.request_client_for_runtime("codex".to_string(), request)
             .await
     }
 
@@ -1027,7 +1039,7 @@ impl ServerSession {
 
     /// Respond to a server-initiated request.
     pub async fn respond(&self, id: JsonValue, result: JsonValue) -> Result<(), RpcError> {
-        self.respond_for_runtime(AgentRuntimeKind::Codex, id, result)
+        self.respond_for_runtime("codex".to_string(), id, result)
             .await
     }
 
@@ -1501,7 +1513,7 @@ fn spawn_remote_runtime_worker(
                     {
                         continue;
                     }
-                    route_app_server_event(&event_tx, &health_tx, runtime_kind, &event);
+                    route_app_server_event(&event_tx, &health_tx, runtime_kind.clone(), &event);
                 }
             }
         }
@@ -1568,13 +1580,13 @@ fn route_in_process_event(
     match event {
         InProcessServerEvent::ServerNotification(notification) => {
             let _ = event_tx.send(ServerEvent::Notification {
-                runtime_kind: AgentRuntimeKind::Codex,
+                runtime_kind: "codex".to_string(),
                 notification,
             });
         }
         InProcessServerEvent::ServerRequest(request) => {
             let _ = event_tx.send(ServerEvent::Request {
-                runtime_kind: AgentRuntimeKind::Codex,
+                runtime_kind: "codex".to_string(),
                 request,
             });
         }
@@ -2119,6 +2131,34 @@ mod tests {
         assert_eq!(config.channel_capacity, 256);
         assert!(config.codex_home.is_none());
         assert!(config.working_directory.is_none());
+    }
+
+    #[test]
+    fn openai_base_url_from_env_trims_empty_and_trailing_slashes() {
+        let _guard = env_lock().lock().expect("env lock should not be poisoned");
+        let original = std::env::var_os(OPENAI_BASE_URL_ENV_KEY);
+
+        unsafe {
+            std::env::set_var(OPENAI_BASE_URL_ENV_KEY, " http://localhost:11434/v1/// ");
+        }
+        assert_eq!(
+            openai_base_url_from_env(),
+            Some("http://localhost:11434/v1".to_string())
+        );
+
+        unsafe {
+            std::env::set_var(OPENAI_BASE_URL_ENV_KEY, "   ");
+        }
+        assert_eq!(openai_base_url_from_env(), None);
+
+        match original {
+            Some(value) => unsafe {
+                std::env::set_var(OPENAI_BASE_URL_ENV_KEY, value);
+            },
+            None => unsafe {
+                std::env::remove_var(OPENAI_BASE_URL_ENV_KEY);
+            },
+        }
     }
 
     #[test]

@@ -35,7 +35,33 @@ pub struct AgentInfo {
     pub display_name: String,
     pub wire: AgentWire,
     pub available: bool,
+    /// UI-facing hints from the alleycat host (label/sort/beta/aliases).
+    /// `None` means the host is older or doesn't ship rich metadata; the
+    /// client falls back to generic rendering.
+    pub presentation: Option<AgentPresentation>,
+    /// Behavioral capability flags that gate UI logic (Amp reasoning lock,
+    /// SSH-bridge eligibility, direct-Codex-port routing) without litter
+    /// branching on the agent name.
+    pub capabilities: Option<AgentCapabilities>,
 }
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AgentPresentation {
+    pub title: Option<String>,
+    pub is_beta: bool,
+    pub sort_order: i32,
+    pub description: Option<String>,
+    pub aliases: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AgentCapabilities {
+    pub locks_reasoning_effort_after_activity: bool,
+    pub visible_modes: Option<Vec<String>>,
+    pub supports_ssh_bridge: bool,
+    pub uses_direct_codex_port: bool,
+}
+
 
 pub fn agent_runtime_kind(name: &str, display_name: &str) -> Option<AgentRuntimeKind> {
     let name = name.trim().to_ascii_lowercase();
@@ -46,25 +72,29 @@ pub fn agent_runtime_kind(name: &str, display_name: &str) -> Option<AgentRuntime
         name.as_str()
     };
     match candidate {
-        "codex" => Some(AgentRuntimeKind::Codex),
-        "pi" | "pi.dev" | "pidev" => Some(AgentRuntimeKind::Pi),
-        "opencode" | "open-code" | "open_code" => Some(AgentRuntimeKind::Opencode),
-        "claude" | "claude-code" | "claude_code" => Some(AgentRuntimeKind::Claude),
-        "droid" | "factory" | "factory-droid" | "factory_droid" => Some(AgentRuntimeKind::Droid),
-        _ if display_name == "codex" => Some(AgentRuntimeKind::Codex),
-        _ if display_name == "pi" || display_name == "pi.dev" => Some(AgentRuntimeKind::Pi),
+        "codex" => Some("codex".to_string()),
+        "pi" | "pi.dev" | "pidev" => Some("pi".to_string()),
+        "amp" | "ampcode" | "amp-code" | "amp_code" => Some("amp".to_string()),
+        "opencode" | "open-code" | "open_code" => Some("opencode".to_string()),
+        "claude" | "claude-code" | "claude_code" => Some("claude".to_string()),
+        "droid" | "factory" | "factory-droid" | "factory_droid" => Some("droid".to_string()),
+        "hermes" => Some("hermes".to_string()),
+        _ if display_name == "codex" => Some("codex".to_string()),
+        _ if display_name == "pi" || display_name == "pi.dev" => Some("pi".to_string()),
+        _ if display_name == "amp" || display_name == "amp code" => Some("amp".to_string()),
         _ if display_name == "opencode" || display_name == "open code" => {
-            Some(AgentRuntimeKind::Opencode)
+            Some("opencode".to_string())
         }
         _ if display_name == "claude" || display_name == "claude code" => {
-            Some(AgentRuntimeKind::Claude)
+            Some("claude".to_string())
         }
         _ if display_name == "droid"
             || display_name == "factory"
             || display_name == "factory droid" =>
         {
-            Some(AgentRuntimeKind::Droid)
+            Some("droid".to_string())
         }
+        _ if display_name == "hermes" => Some("hermes".to_string()),
         _ => None,
     }
 }
@@ -234,6 +264,11 @@ enum Request {
         v: u32,
         token: String,
     },
+    RestartAgent {
+        v: u32,
+        token: String,
+        agent: String,
+    },
     Connect {
         v: u32,
         token: String,
@@ -256,13 +291,66 @@ struct AgentInfoWire {
     display_name: String,
     wire: AgentWireWire,
     available: bool,
+    #[serde(default)]
+    presentation: Option<AgentPresentationWire>,
+    #[serde(default)]
+    capabilities: Option<AgentCapabilitiesWire>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum AgentWireWire {
     Websocket,
     Jsonl,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentPresentationWire {
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    is_beta: bool,
+    #[serde(default)]
+    sort_order: i32,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    aliases: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentCapabilitiesWire {
+    #[serde(default)]
+    locks_reasoning_effort_after_activity: bool,
+    #[serde(default)]
+    visible_modes: Option<Vec<String>>,
+    #[serde(default)]
+    supports_ssh_bridge: bool,
+    #[serde(default)]
+    uses_direct_codex_port: bool,
+}
+
+impl From<AgentPresentationWire> for AgentPresentation {
+    fn from(value: AgentPresentationWire) -> Self {
+        AgentPresentation {
+            title: value.title,
+            is_beta: value.is_beta,
+            sort_order: value.sort_order,
+            description: value.description,
+            aliases: value.aliases,
+        }
+    }
+}
+
+impl From<AgentCapabilitiesWire> for AgentCapabilities {
+    fn from(value: AgentCapabilitiesWire) -> Self {
+        AgentCapabilities {
+            locks_reasoning_effort_after_activity: value.locks_reasoning_effort_after_activity,
+            visible_modes: value.visible_modes,
+            supports_ssh_bridge: value.supports_ssh_bridge,
+            uses_direct_codex_port: value.uses_direct_codex_port,
+        }
+    }
 }
 
 pub fn parse_pair_payload(json: &str) -> Result<ParsedPairPayload, AlleycatError> {
@@ -328,8 +416,31 @@ pub async fn list_agents(
             display_name: agent.display_name,
             wire: agent.wire.into(),
             available: agent.available,
+            presentation: agent.presentation.map(Into::into),
+            capabilities: agent.capabilities.map(Into::into),
         })
         .collect())
+}
+
+pub async fn restart_agent(
+    endpoint: &Endpoint,
+    params: ParsedPairPayload,
+    agent: String,
+) -> Result<(), AlleycatError> {
+    let (conn, mut send, mut recv) = open_stream_on(endpoint, &params).await?;
+    write_json_frame(
+        &mut send,
+        &Request::RestartAgent {
+            v: ALLEYCAT_PROTOCOL_VERSION,
+            token: params.token.clone(),
+            agent,
+        },
+    )
+    .await?;
+    let response: Response = read_json_frame(&mut recv).await?;
+    validate_response(&response)?;
+    conn.close(VarInt::from_u32(0), b"restart_agent complete");
+    Ok(())
 }
 
 pub async fn connect_app_server_client(
@@ -632,29 +743,49 @@ mod tests {
     fn agent_runtime_kind_maps_known_agents() {
         assert_eq!(
             agent_runtime_kind("codex", "Codex"),
-            Some(AgentRuntimeKind::Codex)
+            Some("codex".to_string())
         );
         assert_eq!(
             agent_runtime_kind("pi.dev", "Pi"),
-            Some(AgentRuntimeKind::Pi)
+            Some("pi".to_string())
+        );
+        assert_eq!(
+            agent_runtime_kind("amp", "Amp"),
+            Some("amp".to_string())
         );
         assert_eq!(
             agent_runtime_kind("open-code", "opencode"),
-            Some(AgentRuntimeKind::Opencode)
+            Some("opencode".to_string())
         );
         assert_eq!(
             agent_runtime_kind("claude-code", "Claude"),
-            Some(AgentRuntimeKind::Claude)
+            Some("claude".to_string())
         );
         assert_eq!(
             agent_runtime_kind("factory-droid", "Factory Droid"),
-            Some(AgentRuntimeKind::Droid)
+            Some("droid".to_string())
         );
     }
 
     #[test]
     fn agent_runtime_kind_ignores_unknown_agents() {
         assert_eq!(agent_runtime_kind("custom", "Custom"), None);
+    }
+
+    #[test]
+    fn response_decodes_amp_jsonl_agent() {
+        let response: Response = serde_json::from_str(
+            r#"{"v":1,"ok":true,"agents":[{"name":"amp","display_name":"Amp","wire":"jsonl","available":true}]}"#,
+        )
+        .expect("decode response");
+        let agent = response.agents.first().expect("agent");
+
+        assert_eq!(
+            agent_runtime_kind(&agent.name, &agent.display_name),
+            Some("amp".to_string())
+        );
+        assert!(agent.available);
+        assert_eq!(AgentWire::from(agent.wire), AgentWire::Jsonl);
     }
 
     /// `AlleycatReconnectTransport` must coerce to `Arc<dyn RemoteTransport>`

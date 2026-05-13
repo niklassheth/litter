@@ -736,7 +736,7 @@ private struct ConversationComposerGoalRowView: View {
                 HStack(spacing: 3) {
                     Image(systemName: "circle.hexagongrid")
                         .litterMonoFont(size: 9, weight: .semibold)
-                    Text(formatTokens(goal.tokensUsed))
+                    RollingMetricText(formatTokens(goal.tokensUsed))
                         .litterMonoFont(size: 10, weight: .semibold)
                 }
                 .foregroundColor(LitterTheme.textSecondary)
@@ -750,7 +750,7 @@ private struct ConversationComposerGoalRowView: View {
                 HStack(spacing: 3) {
                     Image(systemName: "clock")
                         .litterMonoFont(size: 9, weight: .semibold)
-                    Text(formatSeconds(goal.timeUsedSeconds))
+                    RollingMetricText(formatSeconds(goal.timeUsedSeconds))
                         .litterMonoFont(size: 10, weight: .semibold)
                 }
                 .foregroundColor(LitterTheme.textSecondary)

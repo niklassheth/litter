@@ -36,6 +36,16 @@ extension AppThreadSnapshot {
         return false
     }
 
+    var ampReasoningEffortLocked: Bool {
+        // The "lock reasoning effort once a thread has started" rule is
+        // advertised by the alleycat manifest as a capability flag, so
+        // any future agent with the same constraint inherits the
+        // behavior without litter changes.
+        guard agentRuntimeKind.metadata?.capabilities?.locksReasoningEffortAfterActivity == true
+        else { return false }
+        return !hydratedConversationItems.isEmpty || activeTurnId != nil
+    }
+
     var resolvedModel: String {
         let direct = model?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !direct.isEmpty { return direct }
@@ -115,6 +125,8 @@ extension AppThreadSnapshot {
             return "Claude"
         case "opencode", "open-code", "open_code":
             return "opencode"
+        case "amp", "ampcode", "amp-code", "amp_code", "amp code":
+            return "Amp"
         case "pi", "pi.dev", "pidev":
             return "Pi"
         case "droid", "factory", "factory-droid", "factory_droid", "factory droid":
@@ -125,22 +137,17 @@ extension AppThreadSnapshot {
             if normalized.hasPrefix("claude") || normalized.contains("anthropic") {
                 return "Claude"
             }
+            if normalized.hasPrefix("amp")
+                || normalized.contains("ampcode")
+                || normalized.contains("amp-code")
+                || normalized.contains("amp_code") {
+                return "Amp"
+            }
             return provider?.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
     private static func agentRuntimeDisplayLabel(_ runtime: AgentRuntimeKind) -> String {
-        switch runtime {
-        case .codex:
-            return "Codex"
-        case .pi:
-            return "Pi"
-        case .opencode:
-            return "opencode"
-        case .claude:
-            return "Claude"
-        case .droid:
-            return "Droid"
-        }
+        runtime.displayLabel
     }
 }

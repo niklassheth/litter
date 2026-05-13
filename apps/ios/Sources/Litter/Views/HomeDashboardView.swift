@@ -179,6 +179,7 @@ struct HomeDashboardView: View {
         switch zoomLevel {
         case 1: return "list.bullet"
         case 2: return "list.dash"
+        case 3: return "list.bullet.rectangle"
         default: return "list.bullet.rectangle.fill"
         }
     }
@@ -326,9 +327,9 @@ struct HomeDashboardView: View {
 
     private var zoomButton: some View {
         Button {
-            // Three levels: 1, 2, 4 (level 3 intentionally skipped).
-            // Bounce through them: 1→2→4→2→1.
-            let ladder = [1, 2, 4]
+            // Four levels: 1 SCAN → 2 GLANCE → 3 READ → 4 DEEP.
+            // Bounce through them: 1→2→3→4→3→2→1.
+            let ladder = [1, 2, 3, 4]
             let currentIdx = ladder.firstIndex(of: zoomLevel) ?? 0
             var nextIdx = currentIdx + zoomDirection
             if nextIdx >= ladder.count {
@@ -572,6 +573,9 @@ struct HomeDashboardView: View {
                         onDelete: { session in deleteTargetThread = session },
                         onFork: { session in
                             Task { await onForkThread?(session) }
+                        },
+                        onShowPiP: { session in
+                            StreamingPiPController.shared.start(for: session.key)
                         }
                     )
                 )
@@ -696,13 +700,15 @@ struct SessionCanvasLine: View {
     // ────────────────────────────────────────────────────
     // Zoom levels — each must feel distinct:
     //
-    //  1  SCAN     title only. Max density for scanning.
-    //  2  GLANCE   title + meta line (activity or summary). Identify sessions.
-    //  3  READ     title + activity + server/model + tool log. Understand what happened.
-    //  4  DEEP     multi-line title + full response preview + tool log expanded + cwd.
+    //  1  SCAN     title + age (right). Max density for scanning a backlog.
+    //  2  GLANCE   + identity strip (time · server · model · branch).
+    //  3  READ     + telemetry strip (counts · adds/rems · ⏱ · ctx%) +
+    //              user message (quoted) + 1 tool-log entry.
+    //  4  DEEP     + lineage breadcrumb + 3 tool-log entries + response
+    //              preview + sibling pills + cwd footer w/ Working pill.
     //
-    // Active sessions always show activity status. Time only shows where it adds info
-    // (zoom 2 summary, zoom 3+ right column). Never duplicated.
+    // Identity (text) and telemetry (numbers) live on separate lines so a
+    // 390 px iPhone row never has to truncate one to fit the other.
     // ────────────────────────────────────────────────────
 
     var body: some View {
@@ -728,10 +734,11 @@ struct SessionCanvasLine: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .visibleWhen(zoomLevel >= 4 && (session.lineage?.ancestors.isEmpty == false))
 
-                // Title — always solo on its own line at every zoom level.
-                // Fork rune (when this thread is part of a multi-branch
-                // lineage) trails the title text. Single chip, single
-                // number — sized for SCAN density at zoom 1.
+                // Title row: title + fork rune (if branched) on the left,
+                // a relative-age chip pinned to the right at zoom 1 so the
+                // SCAN row carries recency info without crowding identity.
+                // Higher zooms surface age inside `modelBadgeLine` and drop
+                // the chip here so we never duplicate.
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     FormattedText(text: session.sessionTitle, lineLimit: zoomLevel >= 4 ? 4 : 2)
                         .modifier(MarkdownMatchedTitleFont())
@@ -741,7 +748,13 @@ struct SessionCanvasLine: View {
                     if let lineage = session.lineage, lineage.hasMultipleBranches {
                         forkRune(lineage: lineage)
                     }
-                    Spacer(minLength: 0)
+                    Spacer(minLength: 6)
+                    if zoomLevel == 1 {
+                        Text(timeAgo)
+                            .litterMonoFont(size: 10, weight: .regular)
+                            .foregroundStyle(LitterTheme.textMuted.opacity(0.7))
+                            .fixedSize()
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -765,29 +778,48 @@ struct SessionCanvasLine: View {
                     // sets zoomLevel=4 during a pinch so every layer is
                     // present and the UIKit frame clip reveals it
                     // progressively.
+                    //
+                    // Stacking order is the row's reading order:
+                    //   identity  →  goal  →  telemetry  →  user msg  →
+                    //   activity  →  response  →  branches  →  cwd
+                    // Identity (time/server/model) and telemetry (counts/%/
+                    // adds/rems) are intentionally on separate lines so a
+                    // 390 px row never has to choose between truncating the
+                    // server name and dropping a stat.
                     modelBadgeLine
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .visibleWhen(zoomLevel >= 2)
+                    // Goal at z2/z3 renders standalone. At z4 it folds
+                    // into `telemetryDashboard` (banner above the grid)
+                    // so the dashed-bordered panel is the single home for
+                    // both the objective and the metrics.
                     goalLine
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .visibleWhen(zoomLevel >= 2 && session.goal != nil)
+                        .visibleWhen(zoomLevel >= 2 && zoomLevel < 4 && session.goal != nil)
+                    telemetryStrip
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .visibleWhen(zoomLevel >= 3)
                     userMessageLine
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .visibleWhen(zoomLevel >= 3)
-                    toolLog(maxEntries: zoomLevel >= 4 ? 3 : 1)
+                    activityHeader
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .visibleWhen(zoomLevel >= 4 && !session.recentToolLog.isEmpty)
+                    // Zoom 4 takes the whole screen — show the full
+                    // recent_tool_log (Rust caps at 8 already) so Edit
+                    // entries don't get pushed off the visible suffix
+                    // by newer Bash commands. Zoom 3 keeps it tight at
+                    // 1 entry so multiple sessions can fit on screen.
+                    toolLog(maxEntries: zoomLevel >= 4 ? 8 : 1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .visibleWhen(zoomLevel >= 3)
                     responsePreview
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .visibleWhen(zoomLevel >= 3)
+                        .visibleWhen(zoomLevel >= 4)
                     siblingPillsRow
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .visibleWhen(zoomLevel >= 4 && (session.lineage?.hasMultipleBranches == true))
-                    Text(PathDisplay.display(session.cwd, isLocal: session.isLocal))
-                        .litterMonoFont(size: 10, weight: .regular)
-                        .foregroundStyle(LitterTheme.textMuted.opacity(0.7))
-                        .lineLimit(2)
-                        .padding(.top, 4)
+                    cwdFooter
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .visibleWhen(zoomLevel == 4 && !session.cwd.isEmpty)
                 }
@@ -863,21 +895,21 @@ struct SessionCanvasLine: View {
             Image(systemName: "chevron.left.forwardslash.chevron.right")
                 .litterFont(size: 8)
                 .foregroundStyle(LitterTheme.textMuted.opacity(0.7))
-            Text("\(toolCallCount)")
+            RollingMetricText("\(toolCallCount)")
                 .foregroundStyle(LitterTheme.textMuted.opacity(0.8))
         }
         if turnCount > 0 {
             Image(systemName: "arrow.turn.down.right")
                 .litterFont(size: 8)
                 .foregroundStyle(LitterTheme.textMuted.opacity(0.7))
-            Text("\(turnCount)")
+            RollingMetricText("\(turnCount)")
                 .foregroundStyle(LitterTheme.textMuted.opacity(0.8))
         }
         if let tu = session.tokenUsage, let window = tu.contextWindow, window > 0 {
             let pct = Int((Double(tu.totalTokens) / Double(window)) * 100)
             Text("\u{00b7}")
                 .foregroundStyle(LitterTheme.textMuted.opacity(0.5))
-            Text("\(pct)%")
+            RollingMetricText("\(pct)%")
                 .foregroundStyle(pct > 80 ? LitterTheme.warning.opacity(0.8) : LitterTheme.textMuted.opacity(0.8))
         }
     }
@@ -901,58 +933,323 @@ struct SessionCanvasLine: View {
         }
     }
 
-    // MARK: - Zoom 3+: model + badges (no workspace — already shown)
+    // MARK: - Zoom 2+: identity strip (time · server · model · branch)
+    //
+    // This row owns *only* identity. Telemetry (counts, %, adds/rems,
+    // stopwatch) lives below in `telemetryStrip` so a 390 px iPhone row
+    // never has to choose between truncating the server name and showing
+    // a stat. At zoom 2 the strip stands alone (no telemetry yet); at
+    // zoom 3+ it sits on top of the telemetry strip.
 
     private var modelBadgeLine: some View {
         HStack(spacing: 4) {
-            // Left group — the only text that might need to truncate when
-            // the row is tight. Keeping `.lineLimit(1)` scoped to this
-            // group prevents it from propagating into the chip HStacks on
-            // the right and chopping short numerics to ellipses.
-            HStack(spacing: 4) {
-                Text(timeAgo)
-                    .foregroundStyle(LitterTheme.textMuted.opacity(0.8))
-                Text("\u{00b7}")
-                    .foregroundStyle(LitterTheme.textMuted.opacity(0.5))
-                Image(systemName: "server.rack")
-                    .litterFont(size: 8)
-                    .foregroundStyle(LitterTheme.accent.opacity(0.5))
-                Text(session.serverDisplayName)
-                    .foregroundStyle(LitterTheme.accent.opacity(0.6))
-                let m = session.model.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !m.isEmpty {
-                    Text("\u{00b7}").foregroundStyle(LitterTheme.textMuted.opacity(0.5))
-                    HomeRuntimeIcon(kind: session.agentRuntimeKind)
-                    Text(m)
-                        .foregroundStyle(LitterTheme.textSecondary.opacity(0.7))
-                }
-                if let lineage = session.lineage, lineage.hasMultipleBranches {
-                    Text("\u{00b7}").foregroundStyle(LitterTheme.textMuted.opacity(0.5))
-                    branchChip(lineage: lineage)
-                } else if session.isFork {
-                    // Fallback when we know it's a fork but the lineage
-                    // hasn't been assembled (e.g. parent thread isn't
-                    // loaded). Keep the prior single-word warning.
-                    Text("\u{00b7}").foregroundStyle(LitterTheme.textMuted.opacity(0.5))
-                    Text("fork")
-                        .foregroundStyle(LitterTheme.warning.opacity(0.8))
-                }
-                if session.isSubagent, let agent = session.agentLabel {
-                    Text("\u{00b7}").foregroundStyle(LitterTheme.textMuted.opacity(0.5))
-                    Text(agent)
-                        .foregroundStyle(LitterTheme.accent.opacity(0.6))
-                }
+            Text(timeAgo)
+                .foregroundStyle(LitterTheme.textMuted.opacity(0.8))
+            Text("\u{00b7}")
+                .foregroundStyle(LitterTheme.textMuted.opacity(0.5))
+            Image(systemName: "server.rack")
+                .litterFont(size: 8)
+                .foregroundStyle(LitterTheme.accent.opacity(0.5))
+            Text(session.serverDisplayName)
+                .foregroundStyle(LitterTheme.accent.opacity(0.6))
+            let m = session.model.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !m.isEmpty {
+                Text("\u{00b7}").foregroundStyle(LitterTheme.textMuted.opacity(0.5))
+                HomeRuntimeIcon(kind: session.agentRuntimeKind)
+                Text(m)
+                    .foregroundStyle(LitterTheme.textSecondary.opacity(0.7))
             }
-            .lineLimit(1)
-            .truncationMode(.tail)
-
-            Spacer(minLength: 6)
-            inlineStats
-                .fixedSize(horizontal: true, vertical: false)
-                .layoutPriority(1)
+            if let lineage = session.lineage, lineage.hasMultipleBranches {
+                Text("\u{00b7}").foregroundStyle(LitterTheme.textMuted.opacity(0.5))
+                branchChip(lineage: lineage)
+            } else if session.isFork {
+                Text("\u{00b7}").foregroundStyle(LitterTheme.textMuted.opacity(0.5))
+                Text("fork")
+                    .foregroundStyle(LitterTheme.warning.opacity(0.8))
+            }
+            if session.isSubagent, let agent = session.agentLabel {
+                Text("\u{00b7}").foregroundStyle(LitterTheme.textMuted.opacity(0.5))
+                Text(agent)
+                    .foregroundStyle(LitterTheme.accent.opacity(0.6))
+            }
+            Spacer(minLength: 0)
         }
         .litterMonoFont(size: 10, weight: .regular)
+        .lineLimit(1)
+        .truncationMode(.tail)
         .padding(.top, 1)
+    }
+
+    // MARK: - Zoom 3+: telemetry strip (counts · adds/rems · stopwatch · ctx%)
+    //
+    // The numeric line. Lives on its own row so identity above can render
+    // full-width without competing for space. Wraps gracefully if the
+    // device is narrow or the text scale is large — the only soft contract
+    // is that nothing here truncates with an ellipsis.
+
+    @ViewBuilder
+    private var telemetryStrip: some View {
+        if zoomLevel >= 4 {
+            telemetryDashboard
+        } else {
+            telemetryRow
+        }
+    }
+
+    /// Zoom 3: tight horizontal strip — chips flow left, no labels, no
+    /// borders. Density-friendly so multiple sessions still fit on
+    /// screen at this zoom.
+    @ViewBuilder
+    private var telemetryRow: some View {
+        let stats = s
+        let hasDiff = (stats?.diffAdditions ?? 0) > 0 || (stats?.diffDeletions ?? 0) > 0
+        let hasContextPct: Bool = {
+            guard let tu = session.tokenUsage, let window = tu.contextWindow else { return false }
+            return window > 0
+        }()
+        let hasAny = turnCount > 0 || toolCallCount > 0 || hasDiff || session.lastTurnStart != nil || hasContextPct
+
+        if hasAny {
+            HStack(spacing: 12) {
+                if turnCount > 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "arrow.turn.down.right")
+                            .litterFont(size: 8)
+                        RollingMetricText("\(turnCount)")
+                    }
+                    .foregroundStyle(LitterTheme.textMuted.opacity(0.7))
+                }
+                if toolCallCount > 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "chevron.left.forwardslash.chevron.right")
+                            .litterFont(size: 8)
+                        RollingMetricText("\(toolCallCount)")
+                    }
+                    .foregroundStyle(LitterTheme.textMuted.opacity(0.7))
+                }
+                if let stats, hasDiff {
+                    HStack(spacing: 5) {
+                        RollingMetricText("+\(stats.diffAdditions)")
+                            .foregroundStyle(LitterTheme.accent.opacity(0.75))
+                        RollingMetricText("-\(stats.diffDeletions)")
+                            .foregroundStyle(LitterTheme.danger.opacity(0.65))
+                    }
+                }
+                if let start = session.lastTurnStart {
+                    TurnStopwatchChip(start: start, end: session.lastTurnEnd)
+                }
+                if let tu = session.tokenUsage, let window = tu.contextWindow, window > 0 {
+                    let pct = Int((Double(tu.totalTokens) / Double(window)) * 100)
+                    RollingMetricText("\(pct)%")
+                        .foregroundStyle(pct > 80 ? LitterTheme.warning.opacity(0.85) : LitterTheme.textMuted.opacity(0.75))
+                }
+                Spacer(minLength: 0)
+            }
+            .litterMonoFont(size: 10, weight: .regular)
+            .padding(.top, 4)
+        }
+    }
+
+    /// Zoom 4: 2-column × 3-row dashboard between dashed rules. Each
+    /// cell is `[icon] value label` — value bold/coloured, label dim.
+    /// Cells with no data are placed as empty spaces so paired rows
+    /// stay aligned. When the session has a goal, an objective banner
+    /// folds into the top of the same dashed panel, and the tokens /
+    /// duration cells prefer goal-derived numbers (the goal's budget
+    /// burndown is more meaningful than session-wide totals).
+    @ViewBuilder
+    private var telemetryDashboard: some View {
+        let stats = s
+        let files = stats?.filesChanged ?? 0
+        let pct: Int? = {
+            guard let tu = session.tokenUsage, let window = tu.contextWindow, window > 0 else { return nil }
+            return Int((Double(tu.totalTokens) / Double(window)) * 100)
+        }()
+        // Tokens: prefer goal.tokensUsed when goal is set, otherwise
+        // session-wide totalTokens. Same swap for duration. Either way
+        // the cell shows a single number, just from the most relevant
+        // source for the current session state.
+        let goal = session.goal
+        let totalTokens: Int64? = {
+            if let g = goal, g.tokensUsed > 0 { return g.tokensUsed }
+            guard let tu = session.tokenUsage, tu.totalTokens > 0 else { return nil }
+            return tu.totalTokens
+        }()
+        let durationSeconds: Int64? = {
+            if let g = goal, g.timeUsedSeconds > 0 { return g.timeUsedSeconds }
+            if let ms = stats?.sessionDurationMs, ms > 0 { return ms / 1000 }
+            return nil
+        }()
+        let adds = stats?.diffAdditions ?? 0
+        let rems = stats?.diffDeletions ?? 0
+
+        let hasMetrics = files > 0 || adds > 0 || rems > 0 || pct != nil || totalTokens != nil || durationSeconds != nil
+        let hasAny = hasMetrics || goal != nil
+        if hasAny {
+            VStack(alignment: .leading, spacing: 0) {
+                if let goal {
+                    goalBanner(goal: goal)
+                    if hasMetrics {
+                        // Mid-rule between objective and metrics so they
+                        // read as two zones inside the same panel.
+                        Rectangle()
+                            .fill(LitterTheme.border.opacity(0.4))
+                            .frame(height: 0.5)
+                            .padding(.vertical, 8)
+                    }
+                }
+                if hasMetrics {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .top, spacing: 14) {
+                            statCell(icon: "chevron.left.forwardslash.chevron.right",
+                                     value: files > 0 ? "\(files)" : nil,
+                                     valueColor: LitterTheme.textPrimary,
+                                     label: "files")
+                            statCell(icon: nil,
+                                     valuePrefix: nil,
+                                     value: pct.map { "\($0)%" },
+                                     valueColor: (pct ?? 0) > 80 ? LitterTheme.warning : LitterTheme.warning.opacity(0.85),
+                                     label: "context")
+                        }
+                        HStack(alignment: .top, spacing: 14) {
+                            statCell(icon: nil,
+                                     value: adds > 0 ? "+\(adds.formatted(.number.grouping(.automatic)))" : nil,
+                                     valueColor: LitterTheme.accent,
+                                     label: "added")
+                            statCell(icon: "snowflake",
+                                     value: totalTokens.map { Self.formatTokens($0) },
+                                     valueColor: LitterTheme.textPrimary,
+                                     label: "tok")
+                        }
+                        HStack(alignment: .top, spacing: 14) {
+                            statCell(icon: nil,
+                                     value: rems > 0 ? "-\(rems.formatted(.number.grouping(.automatic)))" : nil,
+                                     valueColor: LitterTheme.danger.opacity(0.85),
+                                     label: "removed")
+                            statCell(icon: "clock",
+                                     value: durationSeconds.map { Self.formatDuration($0) },
+                                     valueColor: LitterTheme.textPrimary,
+                                     label: "duration")
+                        }
+                    }
+                }
+            }
+            .litterMonoFont(size: 12, weight: .regular)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 10)
+            .overlay(alignment: .top) {
+                Rectangle().fill(LitterTheme.border.opacity(0.5))
+                    .frame(height: 0.5)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(LitterTheme.border.opacity(0.5))
+                    .frame(height: 0.5)
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    /// Goal banner that sits inside the dashboard panel at z4. Shows
+    /// the small "GOAL" small-caps label, a status dot tinted by the
+    /// goal's lifecycle, and the objective text (allowed to wrap).
+    @ViewBuilder
+    private func goalBanner(goal: AppThreadGoal) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text("GOAL")
+                    .litterMonoFont(size: 9, weight: .semibold)
+                    .tracking(1.2)
+                    .foregroundStyle(LitterTheme.textMuted.opacity(0.65))
+                Text(goalStatusLabel(goal.status))
+                    .litterMonoFont(size: 9, weight: .semibold)
+                    .tracking(0.6)
+                    .foregroundStyle(goalStatusTint(goal.status).opacity(0.85))
+            }
+            HStack(alignment: .top, spacing: 8) {
+                Circle()
+                    .fill(goalStatusTint(goal.status))
+                    .frame(width: 6, height: 6)
+                    .padding(.top, 5)
+                Text(goal.objective)
+                    .litterMonoFont(size: 12, weight: .regular)
+                    .foregroundStyle(LitterTheme.textSecondary.opacity(0.95))
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func goalStatusLabel(_ status: AppThreadGoalStatus) -> String {
+        switch status {
+        case .active: return "· ACTIVE"
+        case .paused: return "· PAUSED"
+        case .budgetLimited: return "· BUDGET"
+        case .complete: return "· COMPLETE"
+        }
+    }
+
+    /// Single dashboard cell: optional icon, value (bold/coloured),
+    /// dim label. If `value` is nil the cell renders as an empty
+    /// spacer so paired rows in the dashboard stay aligned.
+    @ViewBuilder
+    private func statCell(
+        icon: String?,
+        valuePrefix: String? = nil,
+        value: String?,
+        valueColor: Color,
+        label: String
+    ) -> some View {
+        if let value {
+            HStack(spacing: 6) {
+                if let icon {
+                    Image(systemName: icon)
+                        .litterFont(size: 10)
+                        .foregroundStyle(LitterTheme.textMuted.opacity(0.8))
+                        .frame(width: 14)
+                }
+                if let valuePrefix {
+                    Text(valuePrefix)
+                        .foregroundStyle(valueColor)
+                }
+                RollingMetricText(value)
+                    .foregroundStyle(valueColor)
+                Text(label)
+                    .foregroundStyle(LitterTheme.textMuted.opacity(0.65))
+                    .litterMonoFont(size: 11, weight: .regular)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            // Empty slot — keeps the column width stable so the paired
+            // cell across the row doesn't shift when this one is missing.
+            Color.clear.frame(height: 1).frame(maxWidth: .infinity)
+        }
+    }
+
+    /// "86,012,400" → "86.0M", "12,400" → "12.4k", small values → "412".
+    private static func formatTokens(_ value: Int64) -> String {
+        if value >= 1_000_000 {
+            return String(format: "%.1fM", Double(value) / 1_000_000.0)
+        }
+        if value >= 1_000 {
+            return String(format: "%.1fk", Double(value) / 1_000.0)
+        }
+        return "\(value)"
+    }
+
+    /// "176560" → "49h 6m", "3320" → "55m 20s", "45" → "45s".
+    private static func formatDuration(_ seconds: Int64) -> String {
+        if seconds < 60 { return "\(seconds)s" }
+        let total = Int(seconds)
+        let minutes = total / 60
+        let remainSecs = total % 60
+        if total < 3600 {
+            return remainSecs == 0 ? "\(minutes)m" : "\(minutes)m \(remainSecs)s"
+        }
+        let hours = total / 3600
+        let remainMins = (total % 3600) / 60
+        return remainMins == 0 ? "\(hours)h" : "\(hours)h \(remainMins)m"
     }
 
     // MARK: - Zoom 2+: goal line
@@ -976,7 +1273,7 @@ struct SessionCanvasLine: View {
                     HStack(spacing: 2) {
                         Image(systemName: "circle.hexagongrid")
                             .litterFont(size: 8)
-                        Text(formatGoalTokens(goal.tokensUsed))
+                        RollingMetricText(formatGoalTokens(goal.tokensUsed))
                     }
                     .foregroundStyle(LitterTheme.textMuted.opacity(0.7))
                 }
@@ -984,7 +1281,7 @@ struct SessionCanvasLine: View {
                     HStack(spacing: 2) {
                         Image(systemName: "clock")
                             .litterFont(size: 8)
-                        Text(formatGoalSeconds(goal.timeUsedSeconds))
+                        RollingMetricText(formatGoalSeconds(goal.timeUsedSeconds))
                     }
                     .foregroundStyle(LitterTheme.textMuted.opacity(0.7))
                 }
@@ -1026,48 +1323,6 @@ struct SessionCanvasLine: View {
         return remainMins == 0 ? "\(hours)h" : "\(hours)h \(remainMins)m"
     }
 
-    /// Compact stat chips appended to the right end of `modelBadgeLine` so
-    /// they share a line instead of adding new rows to the row height.
-    @ViewBuilder
-    private var inlineStats: some View {
-        HStack(spacing: 6) {
-            if turnCount > 0 {
-                HStack(spacing: 2) {
-                    Image(systemName: "arrow.turn.down.right")
-                        .litterFont(size: 8)
-                    Text("\(turnCount)")
-                }
-                .foregroundStyle(LitterTheme.textMuted.opacity(0.7))
-            }
-            if toolCallCount > 0 {
-                HStack(spacing: 2) {
-                    Image(systemName: "chevron.left.forwardslash.chevron.right")
-                        .litterFont(size: 8)
-                    Text("\(toolCallCount)")
-                }
-                .foregroundStyle(LitterTheme.textMuted.opacity(0.7))
-            }
-            if let stats = s, stats.diffAdditions > 0 || stats.diffDeletions > 0 {
-                HStack(spacing: 2) {
-                    Text("+\(stats.diffAdditions)")
-                        .foregroundStyle(LitterTheme.accent.opacity(0.7))
-                    Text("-\(stats.diffDeletions)")
-                        .foregroundStyle(LitterTheme.danger.opacity(0.6))
-                }
-            }
-            // Turn stopwatch reads pre-derived bounds from the Rust reducer,
-            // so the chip stays prop-driven (no `appModel.snapshot` access).
-            if let start = session.lastTurnStart {
-                TurnStopwatchChip(start: start, end: session.lastTurnEnd)
-            }
-            if let tu = session.tokenUsage, let window = tu.contextWindow, window > 0 {
-                let pct = Int((Double(tu.totalTokens) / Double(window)) * 100)
-                Text("\(pct)%")
-                    .foregroundStyle(pct > 80 ? LitterTheme.warning.opacity(0.8) : LitterTheme.textMuted.opacity(0.7))
-            }
-        }
-    }
-
     // MARK: - Zoom 3+: last user message (quoted, single line)
 
     @ViewBuilder
@@ -1075,18 +1330,77 @@ struct SessionCanvasLine: View {
         let message = (session.lastUserMessage ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let title = session.sessionTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         if !message.isEmpty && message != title {
-            HStack(alignment: .top, spacing: 6) {
-                Text(">")
-                    .foregroundStyle(LitterTheme.accent.opacity(0.7))
-                FormattedText(text: message, lineLimit: 1)
-                    .foregroundStyle(LitterTheme.textSecondary.opacity(0.9))
-            }
-            // Match the conversation view's user-message size
-            // (`UserBubble` uses `.litterFont(size: conversationBodyPointSize)`).
-            // Same regular (non-mono) font too, for visual parity.
-            .litterFont(size: LitterFont.conversationBodyPointSize)
-            .padding(.top, 3)
+            // Quoted block: accent left rule + faint accent fill so the
+            // last user message reads as content rather than meta. Sits
+            // between telemetry (above) and the tool log / response
+            // preview (below) and visually breaks the two apart.
+            FormattedText(text: message, lineLimit: zoomLevel >= 4 ? 3 : 1)
+                .foregroundStyle(LitterTheme.textSecondary.opacity(0.95))
+                .litterFont(size: LitterFont.conversationBodyPointSize)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 5)
+                .padding(.leading, 8)
+                .padding(.trailing, 6)
+                .background(LitterTheme.accent.opacity(0.06))
+                .overlay(alignment: .leading) {
+                    LitterTheme.accent.opacity(0.55).frame(width: 2)
+                }
+                .clipShape(
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                )
+                .padding(.top, 6)
         }
+    }
+
+    // MARK: - Zoom 4: "Recent activity" section header
+    //
+    // A small monospace label above the tool log so the icon list is
+    // unambiguously "what just happened" rather than blending into the
+    // user message preview above or the response preview below.
+
+    @ViewBuilder
+    private var activityHeader: some View {
+        Text("RECENT ACTIVITY")
+            .litterMonoFont(size: 9, weight: .semibold)
+            .tracking(1.2)
+            .foregroundStyle(LitterTheme.textMuted.opacity(0.65))
+            .padding(.top, 10)
+    }
+
+    // MARK: - Zoom 4: cwd footer (paired with working pill if active)
+    //
+    // Workspace path on the left, a small "Working…" pill on the right
+    // when the session has a live turn. Both are peer-status info — they
+    // belong on one line, not stacked.
+
+    @ViewBuilder
+    private var cwdFooter: some View {
+        HStack(spacing: 8) {
+            Text(PathDisplay.display(session.cwd, isLocal: session.isLocal))
+                .litterMonoFont(size: 10, weight: .regular)
+                .foregroundStyle(LitterTheme.textMuted.opacity(0.7))
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if isActive {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(LitterTheme.accent)
+                        .frame(width: 4, height: 4)
+                    Text("Working")
+                        .litterMonoFont(size: 9, weight: .semibold)
+                        .foregroundStyle(LitterTheme.accent.opacity(0.85))
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .overlay(
+                    Capsule()
+                        .stroke(LitterTheme.accent.opacity(0.4), lineWidth: 0.5)
+                )
+                .clipShape(Capsule())
+                .fixedSize()
+            }
+        }
+        .padding(.top, 6)
     }
 
     // MARK: - Zoom 3+: tool call log
@@ -1116,15 +1430,28 @@ struct SessionCanvasLine: View {
             toolIconView(for: entry.tool)
                 .foregroundStyle(LitterTheme.accent.opacity(0.6))
                 .frame(minWidth: 20, alignment: .leading)
-            Text(entry.detail)
+            Text(formatToolDetail(entry))
                 .foregroundStyle(LitterTheme.textSecondary.opacity(0.8))
                 .lineLimit(1)
-                .truncationMode(.tail)
+                .truncationMode(.middle)
         }
         // Keep tool activity smaller than the assistant response preview so
         // the response remains the primary content on the card.
         .litterFont(size: toolLogFontSize)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Render the tool detail text. For `Edit` we use the same
+    /// `workspaceTitle(for:)` helper the conversation timeline uses for
+    /// FileChange items — gives `Edited MainActivity.kt` rather than
+    /// the full absolute path, which is unreadable in a 390 px row.
+    private func formatToolDetail(_ entry: AppToolLogEntry) -> String {
+        switch entry.tool {
+        case "Edit":
+            return "Edited \(workspaceTitle(for: entry.detail))"
+        default:
+            return entry.detail
+        }
     }
 
     /// Pick the display glyph/icon for a Rust tool-log entry. `AppToolLogEntry.tool`
@@ -1385,8 +1712,7 @@ private struct TurnStopwatchChip: View {
             // which cascades into list row re-measure → RootGeometry
             // invalidation on every active card every second. Mono
             // digits freeze that width so the chip can update in-place.
-            Text(Self.format(seconds))
-                .monospacedDigit()
+            RollingMetricText(Self.format(seconds))
         }
         .foregroundStyle(LitterTheme.textMuted.opacity(0.7))
     }
@@ -1426,19 +1752,7 @@ private struct HomeRuntimeIcon: View {
     let kind: AgentRuntimeKind
 
     var body: some View {
-        Image(kind.assetName)
-            .resizable()
-            .scaledToFit()
-            .frame(width: 12, height: 12)
-            .padding(kind == .codex ? 0 : 1.5)
-            .background(
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(kind == .codex ? Color.clear : Color.black.opacity(0.82))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .stroke(kind == .codex ? Color.clear : LitterTheme.textPrimary.opacity(0.25), lineWidth: 0.5)
-            )
+        AgentIconView(kind: kind, size: 15)
             .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
             .accessibilityLabel(kind.displayLabel)
     }
@@ -1505,10 +1819,17 @@ private struct SessionShimmerEffect: ViewModifier {
 /// it in the tree (layout still runs). Used on zoom-gated card layers
 /// so zoom transitions animate a frame-height interpolation rather
 /// than materializing a new subtree.
+///
+/// When visible we use `maxHeight: nil` (natural sizing). Using
+/// `.infinity` here causes every visible layer to compete for leftover
+/// space inside a fixed-height container — at zoom 4 the card is sized
+/// to a full screen page, so the layers spread apart and create gaps
+/// between sections. With `nil`, layers stay tight against each other
+/// and any leftover space falls below the last visible layer instead.
 extension View {
     func visibleWhen(_ visible: Bool) -> some View {
         self
-            .frame(maxHeight: visible ? .infinity : 0, alignment: .top)
+            .frame(maxHeight: visible ? nil : 0, alignment: .top)
             .opacity(visible ? 1 : 0)
             .clipped()
             .allowsHitTesting(visible)

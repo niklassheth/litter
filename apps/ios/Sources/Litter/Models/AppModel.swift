@@ -142,6 +142,19 @@ final class AppModel {
         // dynamic-tool finalize hook can auto-upsert on `show_widget` calls.
         // Without this, auto-save silently no-ops.
         self.client.setSavedAppsDirectory(directory: SavedAppsDirectory.path)
+
+        // Route Swift presentation lookups through the Rust-owned
+        // `AgentMetadataStore`. Any view rendering an agent label /
+        // icon / capability flag goes through this single shared
+        // client, so a probe response in one screen surfaces metadata
+        // everywhere.
+        let metadataClient = self.client
+        AgentRuntimeMetadataProvider.lookup = { [weak metadataClient] name in
+            metadataClient?.agentMetadata(name: name)
+        }
+        AgentRuntimeMetadataProvider.all = { [weak metadataClient] in
+            metadataClient?.allAgentMetadata() ?? []
+        }
     }
 
     deinit {
@@ -1948,10 +1961,14 @@ final class AppModel {
                         serverId: currentKey.serverId,
                         params: AppListThreadsRequest(
                             cursor: nil,
-                            limit: nil,
+                            limit: 80,
+                            sortKey: .updatedAt,
+                            sortDirection: .desc,
                             archived: nil,
                             cwd: nil,
-                            searchTerm: nil
+                            searchTerm: nil,
+                            useStateDbOnly: false,
+                            runtimeKinds: nil
                         )
                     )
                 } catch {

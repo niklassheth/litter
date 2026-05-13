@@ -572,6 +572,7 @@ mod tests {
             pending_approvals: Vec::new(),
             pending_approval_seeds: HashMap::new(),
             pending_user_inputs: Vec::new(),
+            pending_user_input_seeds: HashMap::new(),
             voice_session: AppVoiceSessionSnapshot::default(),
         }
     }

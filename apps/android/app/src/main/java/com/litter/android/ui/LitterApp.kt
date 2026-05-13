@@ -46,6 +46,7 @@ import com.litter.android.ui.sessions.DirectoryPickerSheet
 import com.litter.android.ui.sessions.SessionLaunchSupport
 import com.litter.android.ui.sessions.SessionsUiState
 import uniffi.codex_mobile_client.AppProject
+import uniffi.codex_mobile_client.ApprovalKind
 import uniffi.codex_mobile_client.PinnedThreadKey
 import uniffi.codex_mobile_client.ThreadKey
 import uniffi.codex_mobile_client.deriveProjects
@@ -469,7 +470,9 @@ fun LitterApp(
             }
 
             // Global approval overlay
-            val approvals = snapshot?.pendingApprovals.orEmpty()
+            val approvals = snapshot?.pendingApprovals.orEmpty().filter {
+                it.kind != ApprovalKind.MCP_ELICITATION
+            }
             val userInputs = snapshot?.pendingUserInputs.orEmpty().filter {
                 !dismissedUserInputs.isDismissed(it.id)
             }

@@ -303,6 +303,12 @@ final class AppLifecycleController {
 
     func requestNotificationPermissionIfNeeded() {
         guard !notificationPermissionRequested else { return }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-test-conversation-display") {
+            notificationPermissionRequested = true
+            return
+        }
+        #endif
         notificationPermissionRequested = true
         LLog.info("push", "requesting notification permission")
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
@@ -334,7 +340,7 @@ final class AppLifecycleController {
                 $0.serverId == key.serverId && $0.threadId == key.threadId
             })
             let hasPendingUserInput = snapshot.pendingUserInputs.contains(where: {
-                $0.serverId == key.serverId && $0.threadId == key.threadId
+                $0.isRelevant(to: key)
             })
             let hasRecentLiveUpdate = trustedLiveKeys.contains(key)
             let remainsTracked = hasActiveTurn || hasPendingApproval || hasPendingUserInput || hasRecentLiveUpdate
@@ -518,31 +524,6 @@ final class AppLifecycleController {
         }
 
         let remainingKeys = Array(orderedKeys.dropFirst())
-        let serverIds = Set(remainingKeys.map(\.serverId))
-        for serverId in serverIds {
-            LLog.info("lifecycle", "refreshTrackedThreads listing threads", fields: ["serverId": serverId])
-            do {
-                _ = try await appModel.client.listThreads(
-                    serverId: serverId,
-                    params: AppListThreadsRequest(
-                        cursor: nil,
-                        limit: nil,
-                        archived: nil,
-                        cwd: nil,
-                        searchTerm: nil
-                    )
-                )
-                LLog.info("lifecycle", "refreshTrackedThreads listThreads completed", fields: ["serverId": serverId])
-            } catch {
-                LLog.error(
-                    "lifecycle",
-                    "refreshTrackedThreads listThreads failed",
-                    error: error,
-                    fields: ["serverId": serverId]
-                )
-            }
-        }
-
         for key in remainingKeys {
             await reloadTrackedThread(
                 appModel: appModel,

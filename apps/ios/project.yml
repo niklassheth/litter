@@ -72,6 +72,7 @@ targets:
       - path: Sources/Litter
         excludes:
           - "**/*.h"
+      - path: Sources/Litter/Bridge/UniFFICodexClient.generated.swift
       - path: Resources/fs
         type: folder
         buildPhase: resources
@@ -104,7 +105,7 @@ targets:
         INFOPLIST_FILE: Sources/Litter/Info.plist
         SWIFT_OBJC_BRIDGING_HEADER: Sources/Litter/Bridge/codex_bridge_objc.h
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        INFOPLIST_KEY_UIBackgroundModes: "audio fetch remote-notification"
+        INFOPLIST_KEY_UIBackgroundModes: "audio fetch remote-notification picture-in-picture"
       configs:
         Debug:
           CODE_SIGN_STYLE: "$(APP_CODE_SIGN_STYLE)"
@@ -170,6 +171,7 @@ targets:
           - Views/RealtimeVoiceScreen.swift
           - Views/VoiceCallView.swift
           - "**/*.h"
+      - path: Sources/Litter/Bridge/UniFFICodexClient.generated.swift
     resources:
       - path: Sources/Litter/Resources/Fonts
       - path: Sources/Litter/Resources/Themes
